@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>جدول المعلم وتوزيع المناهج والكشوف — محمد صالح العمير الأسمري</title>
+<style>
+:root{
+  --ink:#2b2620; --muted:#7a7266; --line:#e6dfd2;
+  --bg:#faf7f1; --card:#ffffff; --accent:#7c5a2e; --accent-soft:#f3ecdf;
+  --teal:#3f6f6a; --teal-soft:#e9f1ef;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+body{font-family:"Segoe UI", Tahoma, "Noto Kufi Arabic", Arial, sans-serif; background:var(--bg); color:var(--ink); line-height:1.7}
+.wrap{max-width:1200px; margin:0 auto; padding:24px 16px 60px}
+header.top{margin-bottom:16px}
+h1{font-size:1.4rem; color:var(--accent)}
+.sub{color:var(--muted); font-size:.88rem}
+.maintabs{display:flex; gap:8px; margin:18px 0 20px; flex-wrap:wrap}
+.maintab{border:1px solid var(--line); background:var(--card); border-radius:12px; padding:10px 24px; cursor:pointer; font:inherit; font-weight:700; color:var(--muted)}
+.maintab.active{background:var(--teal); color:#fff; border-color:var(--teal)}
+.section{display:none}
+.section.active{display:block}
+.controls{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 16px; margin-bottom:14px; flex-wrap:wrap}
+.controls label{font-weight:600; color:var(--accent)}
+select{font:inherit; padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--accent-soft); color:var(--ink); cursor:pointer}
+.week-dates{font-size:.82rem; color:var(--muted)}
+h2{font-size:1.05rem; color:var(--teal); margin:8px 0 12px}
+table{width:100%; border-collapse:collapse; background:var(--card); border-radius:14px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.06)}
+table.sched{table-layout:fixed}
+table th, table td{border:1px solid var(--line); padding:9px 8px; text-align:center; vertical-align:top; font-size:.85rem}
+table th{background:var(--teal); color:#fff; font-size:.85rem}
+table.sched td.day{background:var(--teal-soft); font-weight:700; color:var(--teal); width:90px}
+.cell .cls{font-weight:700; font-size:.95rem}
+.cell .subj{color:var(--muted); font-size:.78rem}
+.cell .lesson{margin-top:6px; font-size:.78rem; background:var(--accent-soft); border-radius:8px; padding:6px 8px; text-align:right}
+.cell .lesson b{color:var(--accent); display:block; font-size:.75rem}
+.cell.empty{color:#c9c0b0}
+.cell.nodata .lesson{background:#f5f2ec; color:var(--muted)}
+.note{font-size:.8rem; color:var(--muted); margin-top:8px}
+.tabs{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px}
+.tab{border:1px solid var(--line); background:var(--card); border-radius:999px; padding:8px 20px; cursor:pointer; font:inherit; font-weight:600; color:var(--muted)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.pane{display:none}
+.pane.active{display:block}
+.weekcard{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin-bottom:10px}
+.weekcard h3{font-size:.95rem; color:var(--accent); margin-bottom:6px}
+.weekcard .dates{font-size:.78rem; color:var(--muted); margin-bottom:6px}
+.weekcard ul{padding-right:20px}
+.weekcard li{font-size:.88rem; margin-bottom:2px}
+.weekcard.exam{background:var(--accent-soft)}
+.badge{display:inline-block; font-size:.72rem; background:var(--teal-soft); color:var(--teal); border-radius:6px; padding:1px 8px; margin-right:6px}
+/* كشوف */
+table.sheet th{cursor:pointer; user-select:none; white-space:nowrap}
+table.sheet th .arrow{font-size:.7rem; margin-right:3px}
+table.sheet td{padding:6px 6px; vertical-align:middle}
+table.sheet td.name{text-align:right; font-weight:600; min-width:170px}
+table.sheet input{width:52px; text-align:center; font:inherit; padding:4px 2px; border:1px solid var(--line); border-radius:8px; background:var(--accent-soft); font-weight:700}
+table.sheet input.g6{background:linear-gradient(135deg,#f7e08a,#d4af37); color:#5c4708; border-color:#c9a227}
+table.sheet input.g7{background:linear-gradient(135deg,#d8f3f5,#8fd8e0); color:#0b5560; border-color:#5fb9c9}
+table.sheet input.absent{background:#d9d6d0; color:#6b665e; border-color:#b8b4ac}
+/* صفحة الدخول */
+#loginGate{position:fixed; inset:0; background:linear-gradient(160deg,#f6f1e7,#ece5d6); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px}
+#loginGate .card{background:#fff; border:1px solid var(--line); border-radius:18px; padding:34px 30px; width:100%; max-width:360px; box-shadow:0 8px 30px rgba(0,0,0,.08); text-align:center}
+#loginGate h2{color:var(--accent); margin-bottom:4px}
+#loginGate p{color:var(--muted); font-size:.85rem; margin-bottom:18px}
+#loginGate input{width:100%; font:inherit; padding:10px 14px; border:1px solid var(--line); border-radius:10px; margin-bottom:12px; text-align:center}
+#loginGate button{width:100%; font:inherit; font-weight:700; padding:11px; border:none; border-radius:10px; background:var(--teal); color:#fff; cursor:pointer}
+#loginGate .err{color:#a33; font-size:.82rem; min-height:1.4em; margin-top:8px}
+#logoutBtn{position:fixed; bottom:14px; left:14px; z-index:50; font:inherit; font-size:.8rem; padding:7px 16px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--muted); cursor:pointer}
+table.sheet input:focus{outline:2px solid var(--teal); background:#fff}
+table.sheet td.total{font-weight:700; color:var(--accent)}
+table.sheet tr:nth-child(even) td{background:#fbf9f4}
+.saved{font-size:.78rem; color:var(--teal); margin-right:auto}
+@media (max-width:700px){
+  table th, table td{padding:6px 4px; font-size:.75rem}
+  .cell .lesson{font-size:.7rem}
+  table.sheet td.name{min-width:120px; font-size:.78rem}
+  table.sheet input{width:44px}
+}
+</style>
+</head>
+<body>
+<div id="loginGate">
+  <div class="card">
+    <h2>تسجيل الدخول</h2>
+    <p>صفحة المعلم محمد صالح العمير الأسمري</p>
+    <input type="password" id="pwd" placeholder="كلمة المرور" autocomplete="current-password">
+    <button id="loginBtn">دخول</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+<button id="logoutBtn" style="display:none">تسجيل الخروج</button>
+<div class="wrap" id="mainWrap" style="display:none">
+  <header class="top">
+    <h1>جدول المعلم وتوزيع المناهج والكشوف الأسبوعية</h1>
+    <div class="sub">المعلم: محمد صالح العمير الأسمري — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ</div>
+  </header>
+
+  <div class="maintabs">
+    <button class="maintab active" data-sec="sec-schedule">جدول المعلم</button>
+    <button class="maintab" data-sec="sec-curriculum">توزيع المنهج</button>
+    <button class="maintab" data-sec="sec-sheets">الكشوف الأسبوعية</button>
+  </div>
+
+  <!-- تبويب جدول المعلم -->
+  <section class="section active" id="sec-schedule">
+    <div class="controls">
+      <label for="weekSel">الأسبوع:</label>
+      <select id="weekSel"></select>
+      <span class="week-dates" id="weekDates"></span>
+    </div>
+    <h2>جدول الحصص الأسبوعي</h2>
+    <div style="overflow-x:auto">
+    <table class="sched" id="schedTable"></table>
+    </div>
+    <div class="note">الخلايا الملوّنة تعرض درس الأسبوع المحدد وفق توزيع المنهج. المواد غير المشمولة بتوزيع مرفق (بدنية، مهارات أسرية/رقمية) تظهر بدون درس.</div>
+  </section>
+
+  <!-- تبويب توزيع المنهج -->
+  <section class="section" id="sec-curriculum">
+    <h2>توزيع مناهج الفصول</h2>
+    <div class="tabs" id="tabs"></div>
+    <div id="panes"></div>
+  </section>
+
+  <!-- تبويب الكشوف -->
+  <section class="section" id="sec-sheets">
+    <h2>الكشوف الأسبوعية للطلاب</h2>
+    <div class="tabs" id="sheetTabs"></div>
+    <div class="controls">
+      <label for="sheetWeekSel">الأسبوع:</label>
+      <select id="sheetWeekSel"></select>
+      <span class="week-dates" id="sheetWeekDates"></span>
+      <span class="saved" id="savedMsg"></span>
+    </div>
+    <div style="overflow-x:auto" id="sheetWrap"></div>
+    <div class="note">كل معيار من 5 درجات (تُعبّأ كاملة تلقائياً ويمكن تغييرها). تتلوّن الخانة حسب الدرجة: من الأحمر (الأدنى) إلى الأخضر (5)، والدرجة 6 ذهبية مكافأة، و7 ماسية. اكتب «غ» في أي خانة لتسجيل الغياب فتصبح رمادية ولا تدخل في المتوسط. التعديلات تُحفظ فوراً في قاعدة البيانات السحابية وتظهر من أي جهاز. اضغط على عنوان أي عمود لترتيب الطلاب تصاعدياً، واضغط مرة أخرى للترتيب التنازلي. اختر «متوسط كل الأسابيع» لعرض متوسط الطالب من 100.</div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ====== قاعدة البيانات (Supabase) ====== */
+const SUPA_URL = "https://lazyikoawttfcflpdixs.supabase.co";
+const SUPA_KEY = "sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+/* ذاكرة مؤقتة: marksCache[cls][week][si][ci] = value */
+const marksCache = {};   // cls -> { loaded:bool, data:{week:{si:{ci:v}}} }
+async function fetchClassMarks(cls){
+  if(marksCache[cls] && marksCache[cls].loaded) return;
+  const { data, error } = await sb.from('marks').select('*').eq('class_key', cls);
+  const store = {};
+  if(!error && data){
+    data.forEach(r=>{
+      if(!store[r.week]) store[r.week]={};
+      if(!store[r.week][r.student_idx]) store[r.week][r.student_idx]={};
+      let v = r.value;
+      if(v!=='غ'){ const n=parseFloat(v); v=isNaN(n)?5:n; }
+      store[r.week][r.student_idx][r.criterion_idx]=v;
+    });
+  }
+  marksCache[cls] = { loaded:true, data:store };
+}
+async function pushMark(cls,w,si,ci,v){
+  await sb.from('marks').upsert({
+    class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()
+  });
+}
+
+/* ====== تسجيل الدخول ====== */
+const PASSWORD = "1448";
+(function initLogin(){
+  const gate=document.getElementById('loginGate');
+  const wrap=document.getElementById('mainWrap');
+  const out=document.getElementById('logoutBtn');
+  function open(){
+    gate.style.display='none'; wrap.style.display='block'; out.style.display='block';
+  }
+  if(localStorage.getItem('teacher_auth')==='1'){ open(); }
+  function tryLogin(){
+    if(document.getElementById('pwd').value===PASSWORD){
+      localStorage.setItem('teacher_auth','1'); open();
+    } else {
+      document.getElementById('loginErr').textContent='كلمة المرور غير صحيحة';
+    }
+  }
+  document.getElementById('loginBtn').onclick=tryLogin;
+  document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
+  out.onclick=()=>{ localStorage.removeItem('teacher_auth'); location.reload(); };
+})();
+
+/* ====== البيانات ====== */
+const CURRICULA = __CURRICULA__;
+const ROSTERS = __ROSTERS__;
+const CRITERIA = ["الحضور","الواجب","المشاركة","الانضباط","القرآن حفظ","القرآن تلاوة"];
+
+/* ====== الجدول المعتمد ====== */
+const DAYS = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس"];
+const PERIODS = 7;
+const SCHEDULE = {
+  "الأحد":    {1:{cls:"1ث",subj:"قرآن وتفسير 1",cur:"sec1"}, 2:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}, 3:{cls:"4ب",subj:"الدراسات الإسلامية",cur:"g4"}, 5:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}, 6:{cls:"1م",subj:"المهارات الأسرية"}},
+  "الاثنين":  {1:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}, 2:{cls:"4ب",subj:"الدراسات الإسلامية",cur:"g4"}},
+  "الثلاثاء": {1:{cls:"5ب",subj:"بدنية"}, 2:{cls:"4ب",subj:"الدراسات الإسلامية",cur:"g4"}, 3:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}, 5:{cls:"1ث",subj:"قرآن وتفسير 1",cur:"sec1"}, 6:{cls:"3م",subj:"المهارات الرقمية"}},
+  "الأربعاء": {1:{cls:"5ب",subj:"بدنية"}, 2:{cls:"1ث",subj:"قرآن وتفسير 1",cur:"sec1"}, 4:{cls:"4ب",subj:"الدراسات الإسلامية",cur:"g4"}, 5:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}},
+  "الخميس":   {1:{cls:"1ث",subj:"قرآن وتفسير 1",cur:"sec1"}, 3:{cls:"2م",subj:"المهارات الأسرية"}, 5:{cls:"5ب",subj:"الدراسات الإسلامية",cur:"g5"}, 6:{cls:"4ب",subj:"الدراسات الإسلامية",cur:"g4"}}
+};
+
+/* ====== التبويبات الرئيسية ====== */
+document.querySelectorAll('.maintab').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.maintab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById(b.dataset.sec).classList.add('active');
+  };
+});
+
+/* ====== أدوات مساعدة ====== */
+function weekData(curKey, w){
+  const c = CURRICULA[curKey];
+  if(!c) return null;
+  return c.weeks.find(x=>x.week===w) || null;
+}
+function weekLabel(w){
+  if(w===18) return "اختبارات شفهية وعملية";
+  if(w===19) return "اختبارات نهائية";
+  return "الأسبوع " + w;
+}
+const WEEKS = [];
+(function(){
+  const all = new Set();
+  Object.values(CURRICULA).forEach(c=>c.weeks.forEach(w=>{ if(typeof w.week==='number') all.add(w.week); }));
+  WEEKS.push(...[...all].sort((a,b)=>a-b));
+})();
+
+/* ====== جدول المعلم ====== */
+const sel = document.getElementById('weekSel');
+WEEKS.forEach(w=>{
+  const o=document.createElement('option');
+  o.value=w; o.textContent=weekLabel(w);
+  sel.appendChild(o);
+});
+sel.value = 1;
+
+function renderSchedule(){
+  const w = +sel.value;
+  let dates="";
+  for(const k of Object.keys(CURRICULA)){
+    const wd = weekData(k,w);
+    if(wd && (wd.hijri||wd.gregorian)){ dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — "); break; }
+  }
+  document.getElementById('weekDates').textContent = dates;
+
+  const t = document.getElementById('schedTable');
+  let html = "<tr><th>اليوم</th>" + Array.from({length:PERIODS},(_,i)=>`<th>الحصة ${i+1}</th>`).join("") + "</tr>";
+  for(const d of DAYS){
+    html += `<tr><td class="day">${d}</td>`;
+    for(let p=1;p<=PERIODS;p++){
+      const cell = SCHEDULE[d] && SCHEDULE[d][p];
+      if(!cell){ html += `<td class="cell empty">—</td>`; continue; }
+      let lessonHtml = "";
+      if(cell.cur){
+        const wd = weekData(cell.cur, w);
+        if(wd && wd.lessons && wd.lessons.length){
+          lessonHtml = `<div class="lesson"><b>${weekLabel(w)}</b>${wd.lessons.map(l=>`<div>• ${l}</div>`).join("")}</div>`;
+        } else {
+          lessonHtml = `<div class="lesson">—</div>`;
+        }
+        html += `<td class="cell"><div class="cls">${cell.cls}</div><div class="subj">${cell.subj}</div>${lessonHtml}</td>`;
+      } else {
+        html += `<td class="cell nodata"><div class="cls">${cell.cls}</div><div class="subj">${cell.subj}</div><div class="lesson">لا يوجد توزيع منهج مرفق</div></td>`;
+      }
+    }
+    html += "</tr>";
+  }
+  t.innerHTML = html;
+}
+sel.addEventListener('change', renderSchedule);
+renderSchedule();
+
+/* ====== تبويبات توزيع المنهج ====== */
+const tabsEl = document.getElementById('tabs');
+const panesEl = document.getElementById('panes');
+Object.entries(CURRICULA).forEach(([key,c],i)=>{
+  const b=document.createElement('button');
+  b.className='tab'+(i===0?' active':'');
+  b.textContent=c.tabLabel || c.grade;
+  b.onclick=()=>{
+    document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#panes .pane').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('pane-'+key).classList.add('active');
+  };
+  tabsEl.appendChild(b);
+
+  const pane=document.createElement('div');
+  pane.className='pane'+(i===0?' active':'');
+  pane.id='pane-'+key;
+  let html=`<div class="sub" style="margin-bottom:10px">${c.grade} — ${c.subject}</div>`;
+  c.weeks.forEach(wd=>{
+    const exam = typeof wd.week==='number' && wd.week>=18;
+    const holiday = typeof wd.week!=='number';
+    const title = holiday ? (wd.lessons && wd.lessons[0] ? wd.lessons[0] : 'إجازة') : weekLabel(wd.week);
+    html += `<div class="weekcard${exam?' exam':''}"${holiday?' style="background:#fdf6e8"':''}>
+      <h3>${title}${exam?'<span class="badge">اختبارات</span>':''}${holiday?'<span class="badge">إجازة</span>':''}</h3>
+      <div class="dates">${[wd.hijri,wd.gregorian].filter(Boolean).join(" — ")}</div>
+      <ul>${(holiday ? (wd.lessons||[]).slice(1) : (wd.lessons||[])).map(l=>`<li>${l}</li>`).join("")}</ul>
+    </div>`;
+  });
+  pane.innerHTML=html;
+  panesEl.appendChild(pane);
+});
+
+/* ====== الكشوف الأسبوعية ====== */
+const sheetKeys = Object.keys(ROSTERS);
+let curSheet = sheetKeys[0];
+const sheetTabsEl = document.getElementById('sheetTabs');
+sheetKeys.forEach((k,i)=>{
+  const b=document.createElement('button');
+  b.className='tab'+(i===0?' active':'');
+  b.textContent=ROSTERS[k].class;
+  b.onclick=()=>{
+    document.querySelectorAll('#sheetTabs .tab').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    curSheet=k; renderSheet();
+  };
+  sheetTabsEl.appendChild(b);
+});
+
+const sheetSel = document.getElementById('sheetWeekSel');
+WEEKS.forEach(w=>{
+  const o=document.createElement('option');
+  o.value=w; o.textContent=weekLabel(w);
+  sheetSel.appendChild(o);
+});
+{
+  const o=document.createElement('option');
+  o.value='avg'; o.textContent='متوسط كل الأسابيع (من 100)';
+  sheetSel.appendChild(o);
+}
+sheetSel.value = 1;
+sheetSel.addEventListener('change', renderSheet);
+
+/* قراءة الدرجات من الذاكرة المؤقتة (المصدر: قاعدة البيانات) */
+function getMark(cls,w,si,ci){
+  const d = marksCache[cls] && marksCache[cls].data;
+  const m = d && d[w] ? d[w] : {};
+  return (m[si] && m[si][ci] !== undefined) ? m[si][ci] : 5;
+}
+function isAbsent(v){ return v==='غ' || v==='غائب'; }
+function markNum(v){ return isAbsent(v) ? 0 : (+v||0); }
+/* لون متدرج: 0 أحمر ← 2.5 كهرماني ← 5 أخضر */
+function markColor(v){
+  if(isAbsent(v)) return '';
+  v=Math.max(0,Math.min(5,+v||0));
+  const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
+  const c1=[224,102,102], c2=[240,180,76], c3=[87,167,115]; // أحمر، كهرماني، أخضر
+  let rgb;
+  if(v<=2.5){ const t=v/2.5; rgb=[lerp(c1[0],c2[0],t),lerp(c1[1],c2[1],t),lerp(c1[2],c2[2],t)]; }
+  else { const t=(v-2.5)/2.5; rgb=[lerp(c2[0],c3[0],t),lerp(c2[1],c3[1],t),lerp(c2[2],c3[2],t)]; }
+  // تفتيح الخلفية للقراءة
+  return `background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},.45);border-color:rgba(${rgb[0]},${rgb[1]},${rgb[2]},.8)`;
+}
+function markClass(v){
+  if(isAbsent(v)) return 'absent';
+  if(+v===7) return 'g7';
+  if(+v===6) return 'g6';
+  return '';
+}
+
+/* الفرز */
+let sortState = {col:null, dir:1}; // dir: 1 تصاعدي, -1 تنازلي
+
+function studentValue(cls,w,si,col){
+  if(col==='name') return ROSTERS[cls].students[si];
+  if(w==='avg'){
+    if(col==='total') return avgOf(cls,si);
+    const ci = +col;
+    let sum=0,n=0;
+    WEEKS.forEach(wk=>{ const v=getMark(cls,wk,si,ci); if(!isAbsent(v)){ sum+=+v; n++; } });
+    return n===0?0:sum/n;
+  }
+  if(col==='total'){
+    let s=0; for(let ci=0;ci<CRITERIA.length;ci++) s+=markNum(getMark(cls,w,si,ci)); return s;
+  }
+  return markNum(getMark(cls,w,si,+col));
+}
+function avgOf(cls,si){
+  let sum=0, mx=0;
+  WEEKS.forEach(wk=>{ for(let ci=0;ci<CRITERIA.length;ci++){
+    const v=getMark(cls,wk,si,ci);
+    if(isAbsent(v)) continue; // الغياب لا يدخل في المتوسط
+    sum+=+v; mx+=5;
+  }});
+  return mx===0 ? 0 : Math.round(sum/mx*1000)/10;
+}
+
+async function renderSheet(){
+  const cls = curSheet;
+  const w = sheetSel.value==='avg' ? 'avg' : +sheetSel.value;
+  const wrapEl = document.getElementById('sheetWrap');
+  if(!(marksCache[cls] && marksCache[cls].loaded)){
+    wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
+    await fetchClassMarks(cls);
+  }
+  const students = ROSTERS[cls].students;
+
+  // تواريخ الأسبوع
+  let dates="";
+  if(w!=='avg'){
+    const map={ 'g4':'g4','g5':'g5','g6':'g6','sec1':'sec1' };
+    const wd = weekData(map[cls], w);
+    if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
+  }
+  document.getElementById('sheetWeekDates').textContent = dates;
+
+  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
+  const headers = ['اسم الطالب/ة', ...CRITERIA.map(c=>c+' (5)'), w==='avg'?'المتوسط (100)':'المجموع (30)'];
+
+  let order = students.map((_,i)=>i);
+  if(sortState.col!==null){
+    order.sort((a,b)=>{
+      const va=studentValue(cls,w,a,sortState.col), vb=studentValue(cls,w,b,sortState.col);
+      let cmp = (typeof va==='string') ? va.localeCompare(vb,'ar') : va-vb;
+      return cmp*sortState.dir;
+    });
+  }
+
+  let html = `<table class="sheet"><tr><th style="cursor:default">م</th>`;
+  headers.forEach((h,idx)=>{
+    const c = cols[idx];
+    const arrow = sortState.col===c ? (sortState.dir===1?'▲':'▼') : '';
+    html += `<th data-col="${c}">${h}<span class="arrow">${arrow}</span></th>`;
+  });
+  html += `</tr>`;
+
+  order.forEach((si,r)=>{
+    html += `<tr><td>${r+1}</td><td class="name">${students[si]}</td>`;
+    for(let ci=0;ci<CRITERIA.length;ci++){
+      if(w==='avg'){
+        const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
+        html += `<td style="${markColor(v)}" class="${markClass(v)}">${v}</td>`;
+      } else {
+        const v = getMark(cls,w,si,ci);
+        html += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
+      }
+    }
+    const tot = w==='avg' ? avgOf(cls,si) : studentValue(cls,w,si,'total');
+    html += `<td class="total">${tot}</td></tr>`;
+  });
+  html += `</table>`;
+  document.getElementById('sheetWrap').innerHTML = html;
+
+  // أحداث الفرز
+  document.querySelectorAll('#sheetWrap th[data-col]').forEach(th=>{
+    th.onclick=()=>{
+      const c=th.dataset.col;
+      if(sortState.col===c){ sortState.dir*=-1; }
+      else { sortState={col:c,dir:1}; }
+      renderSheet();
+    };
+  });
+  // أحداث التعديل
+  document.querySelectorAll('#sheetWrap input').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      let v = inp.value.trim();
+      if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
+      else {
+        let n = parseFloat(v);
+        if(isNaN(n)) n=5;
+        v = Math.max(0,Math.min(7,n));
+      }
+      inp.value=v;
+      const si=+inp.dataset.si, ci=+inp.dataset.ci;
+      // تحديث الذاكرة المؤقتة
+      const store = marksCache[cls].data;
+      if(!store[w]) store[w]={};
+      if(!store[w][si]) store[w][si]={};
+      store[w][si][ci]=v;
+      // تحديث اللون والمجموع
+      inp.className=markClass(v);
+      inp.setAttribute('style', markColor(v));
+      const tr=inp.closest('tr');
+      tr.querySelector('.total').textContent = studentValue(cls,w,si,'total');
+      // حفظ في قاعدة البيانات
+      const msg=document.getElementById('savedMsg');
+      msg.textContent='جارٍ الحفظ…';
+      try{
+        await pushMark(cls,w,si,ci,v);
+        msg.textContent='تم الحفظ في قاعدة البيانات ✓';
+      }catch(e){
+        msg.textContent='تعذر الحفظ — تحقق من الاتصال';
+      }
+      setTimeout(()=>msg.textContent='',2000);
+    });
+  });
+}
+renderSheet();
+</script>
+</body>
+</html>
