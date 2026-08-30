@@ -180,6 +180,9 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .lessonLink{cursor:pointer; transition:color .2s ease}
 .lessonLink:hover{color:var(--teal); text-decoration:underline}
 .lessonLink.doneL, .doneL{text-decoration:line-through; color:#9a948a !important}
+.lessonLink.prevUndone{color:#c62828; font-weight:600}
+.lessonLink.prevUndone::after{content:" ⚠"; font-size:.8em}
+.lsubj{display:inline-block; color:#fff; font-size:.7rem; font-weight:700; padding:1px 8px; border-radius:8px; margin-left:6px; vertical-align:middle}
 .lessonItem{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:9px; box-shadow:var(--shadow); transition:transform .25s ease, box-shadow .25s ease}
 .lessonItem:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg)}
 .lessonItem .lt{flex:1; font-size:.9rem; font-weight:600}
@@ -209,11 +212,17 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .bTool:active{transform:scale(.92)}
 .bCol{width:24px; height:24px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0}
 .bCol.on{border-color:#111; box-shadow:0 0 0 2px #fff inset}
-#bookZoom{width:100%}
-.bookPgW{position:relative; margin:12px auto; max-width:780px}
-.bookPgW .bookPg{margin:0}
+#bookScroll{overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; border-radius:14px}
+#bookZoom{width:100%; margin:0 auto; display:flex; flex-direction:column; align-items:center}
+.bookPgW{position:relative; margin:12px 0; width:100%; max-width:var(--bkMax,780px)}
+.bookPgW .bookPg{margin:0; max-width:none}
 .bookCv{position:absolute; inset:0; width:100%; height:100%; display:block}
 .bookCv.draw{touch-action:none; cursor:crosshair}
+/* أداة الإمساك (اليد) */
+#lpPaneBook.panMode #bookScroll{cursor:grab; touch-action:none}
+#lpPaneBook.panMode #bookScroll.panning{cursor:grabbing}
+#lpPaneBook.panMode .bookCv{pointer-events:none}
+#lpPaneBook.panMode .bookPg{user-select:none; -webkit-user-drag:none}
 @media (max-width:600px){ .bookBar{padding:6px; gap:4px} .bTool{padding:4px 8px} }
 .quizQ{background:var(--card); border:1px solid #e7dfd1; border-radius:16px; padding:14px 16px; margin:12px 0; box-shadow:var(--shadow); animation:fadeUp .35s ease}
 .qText{font-weight:700; margin-bottom:8px; line-height:1.9}
@@ -331,6 +340,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .cqOpt input[type="text"]{flex:1; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff}
 .modalCard textarea{width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; resize:vertical; line-height:1.8}
 @media (max-width:600px){ .cqTypes{flex-direction:column} }
+.weekcard.curWeek{border:2px solid var(--teal); box-shadow:0 0 0 4px rgba(63,111,106,.15), var(--shadow)}
 </style>
 </head>
 <body>
@@ -1507,6 +1517,12 @@ document.querySelectorAll('.maintab').forEach(b=>{
     document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     document.getElementById(b.dataset.sec).classList.add('active');
+    if(b.dataset.sec==='sec-curriculum'){
+      setTimeout(()=>{
+        const cur=document.querySelector('#panes .pane.active .weekcard.curWeek');
+        if(cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
+      }, 100);
+    }
   };
 });
 
@@ -1528,6 +1544,38 @@ const WEEKS = [];
   WEEKS.push(...[...all].sort((a,b)=>a-b));
 })();
 
+/* ====== تحديد الأسبوع الحالي تلقائياً من تواريخ التوزيع ====== */
+function arNum(s){ return String(s).replace(/[٠-٩]/g, d=> '٠١٢٣٤٥٦٧٨٩'.indexOf(d)); }
+function weekRange(cls, wd){
+  const s = arNum(wd.gregorian||'');
+  const nums = (s.match(/\d+/g)||[]).map(Number);
+  if(nums.length<4) return null;
+  let sm,sd,em,ed,sy,ey;
+  if(cls==='g4'){ // الصيغة: من يوم-شهر إلى يوم-شهر-سنة (أرقام عربية)
+    sd=nums[0]; sm=nums[1]; ed=nums[2]; em=nums[3]; ey=nums[4]; sy=ey;
+  } else { // الصيغة: من شهر-يوم إلى شهر-يوم (-سنة أو / سنة أو / سنة-سنة)
+    sm=nums[0]; sd=nums[1]; em=nums[2]; ed=nums[3];
+    if(/\d{4}-\d{4}م/.test(s)){ sy=nums[4]; ey=nums[5]; }
+    else { ey=nums[4]; sy=(sm>em)? ey-1 : ey; }
+  }
+  if(!sy || !ey) return null;
+  return [new Date(sy,sm-1,sd), new Date(ey,em-1,ed,23,59)];
+}
+function currentWeek(){
+  const today=new Date();
+  let best=null;
+  for(const cls of Object.keys(CURRICULA)){
+    for(const wd of CURRICULA[cls].weeks){
+      if(typeof wd.week!=='number') continue;
+      const r=weekRange(cls,wd); if(!r) continue;
+      if(today>=r[0] && today<=r[1]) return wd.week;
+      if(r[0]<=today && (!best || r[0]>best.d)) best={d:r[0],w:wd.week};
+    }
+  }
+  return best ? best.w : 1;
+}
+const CUR_WEEK = currentWeek();
+
 /* ====== جدول المعلم ====== */
 const sel = document.getElementById('weekSel');
 WEEKS.forEach(w=>{
@@ -1535,7 +1583,7 @@ WEEKS.forEach(w=>{
   o.value=w; o.textContent=weekLabel(w);
   sel.appendChild(o);
 });
-sel.value = 1;
+sel.value = CUR_WEEK;
 
 function renderSchedule(){
   const w = +sel.value;
@@ -1557,7 +1605,9 @@ function renderSchedule(){
       if(cell.cur){
         const wd = weekData(cell.cur, w);
         if(wd && wd.lessons && wd.lessons.length){
-          lessonHtml = `<div class="lesson"><b>${weekLabel(w)}</b>${wd.lessons.map((l,li)=>`<div class="lessonLink" data-cls="${cell.cur}" data-week="${w}" data-li="${li}">• ${l}</div>`).join("")}</div>`;
+          const items = wd.lessons.map((l,li)=>({l,li}));
+          if(typeof isQuranLesson==='function') items.sort((a,b)=> (isQuranLesson(a.l)?1:0)-(isQuranLesson(b.l)?1:0));
+          lessonHtml = `<div class="lesson"><b>${weekLabel(w)}</b>${items.map(x=>{ const sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(cell.cur,w,x.li,x.l):''; return `<div class="lessonLink" data-cls="${cell.cur}" data-week="${w}" data-li="${x.li}">${sj?`<span class="lsubj" style="background:${LSUBJ_COLORS[sj]||'#777'}">${sj}</span>`:'• '}${x.l}</div>`; }).join("")}</div>`;
         } else {
           lessonHtml = `<div class="lesson">—</div>`;
         }
@@ -1596,9 +1646,10 @@ Object.entries(CURRICULA).forEach(([key,c],i)=>{
   c.weeks.forEach(wd=>{
     const exam = typeof wd.week==='number' && wd.week>=18;
     const holiday = typeof wd.week!=='number';
+    const isCur = typeof wd.week==='number' && wd.week===CUR_WEEK;
     const title = holiday ? (wd.lessons && wd.lessons[0] ? wd.lessons[0] : 'إجازة') : weekLabel(wd.week);
-    html += `<div class="weekcard${exam?' exam':''}"${holiday?' style="background:#fdf6e8"':''}>
-      <h3>${title}${exam?'<span class="badge">اختبارات</span>':''}${holiday?'<span class="badge">إجازة</span>':''}</h3>
+    html += `<div class="weekcard${exam?' exam':''}${isCur?' curWeek':''}"${holiday?' style="background:#fdf6e8"':''}>
+      <h3>${title}${isCur?'<span class="badge" style="background:var(--teal);color:#fff">الأسبوع الحالي</span>':''}${exam?'<span class="badge">اختبارات</span>':''}${holiday?'<span class="badge">إجازة</span>':''}</h3>
       <div class="dates">${[wd.hijri,wd.gregorian].filter(Boolean).join(" — ")}</div>
       <ul>${(wd.lessons||[]).map((l,li)=>({l,li})).filter((_,idx)=>!holiday||idx>0).map(x=>`<li class="lessonLink" data-cls="${key}" data-week="${wd.week}" data-li="${x.li}">${x.l}</li>`).join("")}</ul>
     </div>`;
@@ -1634,7 +1685,7 @@ WEEKS.forEach(w=>{
   o.value='avg'; o.textContent='متوسط كل الأسابيع (من 100)';
   sheetSel.appendChild(o);
 }
-sheetSel.value = 1;
+sheetSel.value = CUR_WEEK;
 sheetSel.addEventListener('change', renderSheet);
 
 /* قراءة الدرجات من الذاكرة المؤقتة (المصدر: قاعدة البيانات) */
@@ -2623,8 +2674,39 @@ function isLessonDone(cls,w,li){ return lessonsDone[cls] && lessonsDone[cls].has
 /* تطبيق حالة «تم شرحه» على كل أسماء الدروس الظاهرة */
 function applyLessonDone(){
   document.querySelectorAll('.lessonLink[data-cls]').forEach(el=>{
-    el.classList.toggle('doneL', isLessonDone(el.dataset.cls, el.dataset.week, +el.dataset.li));
+    const cls=el.dataset.cls, w=+el.dataset.week, li=+el.dataset.li;
+    const done=isLessonDone(cls, w, li);
+    el.classList.toggle('doneL', done);
+    el.classList.toggle('prevUndone', !done && hasEarlierUndone(cls, w, li));
   });
+}
+
+/* هل يوجد درس سابق (في أسبوع أسبق أو نفس الأسبوع قبله) لم يُعلَّم كـ«تم شرحه»؟ */
+function hasEarlierUndone(cls, w, li){
+  const done = lessonsDone[cls];
+  if(!done) return false;
+  const weeks = CURRICULA[cls].weeks.filter(wd=>typeof wd.week==='number' && wd.week<18).sort((a,b)=>a.week-b.week);
+  for(const wd of weeks){
+    if(wd.week > w) break;
+    const n=(wd.lessons||[]).length;
+    for(let i=0;i<n;i++){
+      if(wd.week===w && i>=li) break;
+      if(!done.has(lessonKey(wd.week,i))) return true;
+    }
+  }
+  return false;
+}
+
+/* تسمية مادة الدرس: قرآن (حفظ/تلاوة) من نص الدرس، وإلا من بيانات الكتاب */
+const LSUBJ_COLORS={'توحيد':'#3f6f6a','حديث':'#b07d2b','فقه':'#5b5ea6','قرآن حفظ':'#2e7d32','قرآن تلاوة':'#00695c'};
+function isQuranLesson(l){ return /^(تلاوة|حفظ)\s*سورة/.test(l.trim()); }
+function lessonSubjectOf(cls,w,li,l){
+  const t=l.trim();
+  if(/^حفظ\s*سورة/.test(t)) return 'قرآن حفظ';
+  if(/^تلاوة\s*سورة/.test(t)) return 'قرآن تلاوة';
+  const bd = (typeof BOOKDATA!=='undefined' && BOOKDATA[cls]) ? BOOKDATA[cls][w+':'+li] : null;
+  if(bd && bd.s) return bd.s;
+  return '';
 }
 
 /* مادة الدرس — المواد الخمس الثابتة */
@@ -2912,7 +2994,10 @@ async function renderQuiz(cls,w,li,box){
 }
 
 /* ====== تصدير ورقة عمل من أسئلة الدرس ====== */
-function wsBuildHtml(cls,w,li,qs){
+function wsBuildHtml(cls,w,li,qs,opts){
+  opts = opts || {};
+  const fs = opts.fs || 14;
+  const gap = (opts.gap!==undefined) ? opts.gap : 10;
   const c = CURRICULA[cls] || {};
   const wd = weekData(cls,w) || {};
   const l = (wd.lessons||[])[li];
@@ -2930,7 +3015,7 @@ function wsBuildHtml(cls,w,li,qs){
 <style>
   @page{ size:A4; margin:14mm 14mm 16mm; }
   *{ box-sizing:border-box; }
-  body{ font-family:'Sakkal Majalla','Traditional Arabic','Amiri','Times New Roman',serif; color:#1a1a1a; margin:0; font-size:14px; line-height:1.6; }
+  body{ font-family:'Sakkal Majalla','Traditional Arabic','Amiri','Times New Roman',serif; color:#1a1a1a; margin:0; font-size:${fs}px; line-height:1.6; }
   .wsHead{ text-align:center; border-bottom:3px double #1a4d8f; padding-bottom:8px; margin-bottom:10px; }
   .wsHead .m1{ font-size:15px; font-weight:bold; color:#1a4d8f; }
   .wsHead .m2{ font-size:13px; color:#444; margin-top:2px; }
@@ -2938,7 +3023,7 @@ function wsBuildHtml(cls,w,li,qs){
   .wsMeta b{ color:#1a4d8f; }
   .wsStu{ border:1px solid #9ab; border-radius:6px; padding:6px 12px; margin-bottom:10px; font-size:13px; display:flex; gap:40px; }
   .wsTitle{ text-align:center; font-size:16px; font-weight:bold; color:#fff; background:#1a4d8f; border:2px solid #123a6e; border-radius:8px; padding:5px 10px; margin-bottom:12px; }
-  .wsq{ margin-bottom:10px; padding:6px 10px; border:1px solid #d7dde6; border-radius:6px; page-break-inside:avoid; }
+  .wsq{ margin-bottom:${gap}px; padding:6px 10px; border:1px solid #d7dde6; border-radius:6px; page-break-inside:avoid; }
   .wsqt{ font-weight:bold; margin-bottom:4px; }
   .wsopts{ display:flex; flex-wrap:wrap; gap:2px 22px; font-size:13px; }
   .wsline{ border-bottom:1px dotted #777; height:22px; }
@@ -2953,6 +3038,8 @@ function wsBuildHtml(cls,w,li,qs){
     <span><b>الدرس:</b> ${title}</span>
     <span><b>الصف:</b> ${escH(c.grade||'')}</span>
     <span><b>الأسبوع:</b> ${escH(weekLabel(w))}</span>
+    <span><b>المعلم:</b> محمد صالح العمير الأسمري</span>
+    <span><b>رقم الدرس:</b> ${li+1}</span>
   </div>
   <div class="wsStu"><span>الاسم: ______________________________</span><span>الصف: ______________</span></div>
   <div class="wsTitle">ورقة عمل — اختبر معلوماتك</div>
@@ -2964,26 +3051,26 @@ async function wsLoadQuestions(cls,w,li){
   await fetchCustomQuestions(cls,key);
   return ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
 }
-async function wsExportPdf(cls,w,li,btn){
+async function wsExportPdf(cls,w,li,btn,opts,qsReady){
   btn.disabled=true;
   try{
-    const qs = await wsLoadQuestions(cls,w,li);
+    const qs = qsReady || await wsLoadQuestions(cls,w,li);
     if(!qs.length){ alert('لا توجد أسئلة لهذا الدرس بعد.'); return; }
     const win = window.open('','_blank');
     if(!win){ alert('فضلاً اسمح بالنوافذ المنبثقة لطباعة ورقة العمل.'); return; }
     win.document.open();
-    win.document.write(wsBuildHtml(cls,w,li,qs));
+    win.document.write(wsBuildHtml(cls,w,li,qs,opts));
     win.document.close();
     win.focus();
     setTimeout(()=>win.print(), 400);
   }finally{ btn.disabled=false; }
 }
-async function wsExportWord(cls,w,li,btn){
+async function wsExportWord(cls,w,li,btn,opts,qsReady){
   btn.disabled=true;
   try{
-    const qs = await wsLoadQuestions(cls,w,li);
+    const qs = qsReady || await wsLoadQuestions(cls,w,li);
     if(!qs.length){ alert('لا توجد أسئلة لهذا الدرس بعد.'); return; }
-    const html = wsBuildHtml(cls,w,li,qs).replace('<html lang="ar" dir="rtl">',
+    const html = wsBuildHtml(cls,w,li,qs,opts).replace('<html lang="ar" dir="rtl">',
       '<html lang="ar" dir="rtl" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">');
     const blob = new Blob(['﻿'+html], {type:'application/msword;charset=utf-8'});
     const wd = weekData(cls,w) || {};
@@ -2995,23 +3082,45 @@ async function wsExportWord(cls,w,li,btn){
     setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
   }finally{ btn.disabled=false; }
 }
-function wsToggleMenu(cls,w,li,box){
-  const old = box.querySelector('#wsMenu');
-  if(old){ old.remove(); return; }
-  const btn = box.querySelector('#qWsBtn');
-  const wrap = btn && btn.parentElement;
-  if(!wrap) return;
-  const menu = document.createElement('div');
-  menu.className='syncMenu'; menu.id='wsMenu';
-  menu.innerHTML = `<button data-m="pdf">📄 PDF (طباعة)</button><button data-m="word">📝 Word</button>`;
-  wrap.appendChild(menu);
-  menu.querySelectorAll('button').forEach(b=>b.onclick=e=>{
-    e.stopPropagation();
-    menu.remove();
-    if(b.dataset.m==='pdf') wsExportPdf(cls,w,li,btn);
-    else wsExportWord(cls,w,li,btn);
-  });
-  setTimeout(()=>document.addEventListener('click', function h(){ const mm=box.querySelector('#wsMenu'); if(mm) mm.remove(); document.removeEventListener('click', h); }), 0);
+function wsToggleMenu(cls,w,li,box){ wsOpenModal(cls,w,li); }
+
+/* نافذة التصدير: معاينة مباشرة + ضبط حجم الخط والمسافة بين الفقرات قبل التحميل */
+async function wsOpenModal(cls,w,li){
+  const qs = await wsLoadQuestions(cls,w,li);
+  if(!qs.length){ alert('لا توجد أسئلة لهذا الدرس بعد.'); return; }
+  const ov = openModal(`
+    <h3>🖨️ تصدير ورقة عمل</h3>
+    <div class="frow" style="display:flex;align-items:center;gap:10px">
+      <label style="margin:0;min-width:70px">حجم الخط</label>
+      <input type="range" id="wsFs" min="11" max="20" value="14" style="flex:1">
+      <span id="wsFsV" style="min-width:34px;text-align:center;font-weight:700">14</span>
+    </div>
+    <div class="frow" style="display:flex;align-items:center;gap:10px">
+      <label style="margin:0;min-width:70px">المسافات بين الفقرات</label>
+      <input type="range" id="wsGap" min="2" max="30" value="10" style="flex:1">
+      <span id="wsGapV" style="min-width:34px;text-align:center;font-weight:700">10</span>
+    </div>
+    <div class="note" style="margin:6px 0 8px">معاينة مباشرة للورقة — عدّل الخط والمسافات ثم اختر صيغة التحميل:</div>
+    <iframe id="wsPrev" style="width:100%;height:400px;border:1px solid var(--line);border-radius:10px;background:#fff"></iframe>
+    <div class="pkBtns" style="margin-top:12px">
+      <button class="pbtn2" id="wsDoPdf">📄 تحميل PDF</button>
+      <button class="pbtn2" id="wsDoWord">📝 تحميل Word</button>
+      <button class="pbtn2 ghost" id="wsClose">إغلاق</button>
+    </div>`);
+  ov.querySelector('.modalCard').style.maxWidth='780px';
+  const fsInp=ov.querySelector('#wsFs'), gapInp=ov.querySelector('#wsGap');
+  const cur=()=>({fs:+fsInp.value, gap:+gapInp.value});
+  const refresh=()=>{
+    ov.querySelector('#wsFsV').textContent=fsInp.value;
+    ov.querySelector('#wsGapV').textContent=gapInp.value;
+    ov.querySelector('#wsPrev').srcdoc = wsBuildHtml(cls,w,li,qs,cur());
+  };
+  fsInp.addEventListener('input',refresh);
+  gapInp.addEventListener('input',refresh);
+  refresh();
+  ov.querySelector('#wsClose').onclick=()=>ov.remove();
+  ov.querySelector('#wsDoPdf').onclick=e=>wsExportPdf(cls,w,li,e.currentTarget,cur(),qs);
+  ov.querySelector('#wsDoWord').onclick=e=>wsExportWord(cls,w,li,e.currentTarget,cur(),qs);
 }
 
 /* ====== تبويب الكتاب: تكبير + رسم مع حفظ سحابي ====== */
@@ -3085,8 +3194,17 @@ function initBookTab(cls,w,li,pane){
   const st = {tool:'pen', color:'#d32f2f', zoom:1};
   const sizeOf = t => t==='hl' ? 26 : t==='erase' ? 30 : 3.5;
 
-  /* التكبير */
-  function applyZoom(){ zoomBox.style.width = (st.zoom*100) + '%'; }
+  /* التكبير: الصفحة تتوسّط دائماً داخل #bookScroll مع إمكانية التمرير */
+  const sc = pane.querySelector('#bookScroll');
+  const lpEl = document.getElementById('lessonPage');
+  function applyZoom(){
+    zoomBox.style.width = (st.zoom*100) + '%';
+    zoomBox.style.setProperty('--bkMax', (780*st.zoom) + 'px');
+    /* إبقاء العرض متمركزاً أفقياً بعد تغيير العرض (RTL) */
+    requestAnimationFrame(()=>{
+      if(sc) zoomBox.scrollIntoView({block:'nearest', inline:'center'});
+    });
+  }
   bar.querySelector('#bkZoomIn').onclick  = ()=>{ st.zoom = Math.min(3, st.zoom*1.25); applyZoom(); };
   bar.querySelector('#bkZoomOut').onclick = ()=>{ st.zoom = Math.max(.6, st.zoom/1.25); applyZoom(); };
   bar.querySelector('#bkZoomReset').onclick = ()=>{ st.zoom = 1; applyZoom(); };
@@ -3110,16 +3228,38 @@ function initBookTab(cls,w,li,pane){
   zoomBox.addEventListener('touchend', e=>{ if(e.touches.length<2) pinchD0 = 0; }, {passive:true});
 
   /* اختيار الأداة واللون */
-  bar.querySelectorAll('[data-btool]').forEach(b=>b.onclick=()=>{
-    bar.querySelectorAll('[data-btool]').forEach(x=>x.classList.remove('on'));
+  bar.querySelectorAll('[data-btool]').forEach(b=>b.onclick=()=>{    bar.querySelectorAll('[data-btool]').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     st.tool = b.dataset.btool;
+    pane.classList.toggle('panMode', st.tool==='pan');
   });
   bar.querySelectorAll('.bCol').forEach(b=>b.onclick=()=>{
     bar.querySelectorAll('.bCol').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     st.color = b.dataset.c;
   });
+
+  /* أداة الإمساك (اليد): السحب يحرّك التمرير أفقياً (#bookScroll) وعمودياً (#lessonPage) */
+  if(sc){
+    let panning=false, panX=0, panY=0, panL=0, panT=0;
+    sc.addEventListener('pointerdown', e=>{
+      if(st.tool!=='pan') return;
+      if(e.pointerType==='touch' && e.isPrimary===false) return;
+      panning=true; panX=e.clientX; panY=e.clientY;
+      panL=sc.scrollLeft; panT=lpEl ? lpEl.scrollTop : 0;
+      try{ sc.setPointerCapture(e.pointerId); }catch(err){}
+      sc.classList.add('panning');
+      e.preventDefault();
+    });
+    sc.addEventListener('pointermove', e=>{
+      if(!panning) return;
+      sc.scrollLeft = panL - (e.clientX - panX);
+      if(lpEl) lpEl.scrollTop = panT - (e.clientY - panY);
+    });
+    const panEnd=()=>{ panning=false; sc.classList.remove('panning'); };
+    sc.addEventListener('pointerup', panEnd);
+    sc.addEventListener('pointercancel', panEnd);
+  }
 
   /* الصفحات */
   const wraps = [...zoomBox.querySelectorAll('.bookPgW')];
@@ -3161,6 +3301,7 @@ function initBookTab(cls,w,li,pane){
       return [ (e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height ];
     };
     cv.addEventListener('pointerdown', e=>{
+      if(st.tool==='pan') return;
       if(e.pointerType==='touch' && e.isPrimary===false) return;
       drawing = true; lastActivePage = page;
       cv.setPointerCapture(e.pointerId);
@@ -3318,6 +3459,291 @@ function syncToggleMenu(){
 }
 
 /* فتح صفحة الدرس (من أي مكان في الموقع) */
+
+/* ====== كشف الطلاب ودرجات المجموعات داخل صفحة الدرس (الصف الحالي فقط) ====== */
+let lpSheetSort = {col:null, dir:1};
+let lpGroupSort = {col:null, dir:1};
+
+function lpFillWeeks(selEl, withAvg){
+  WEEKS.forEach(w=>{
+    const o=document.createElement('option');
+    o.value=w; o.textContent=weekLabel(w);
+    selEl.appendChild(o);
+  });
+  if(withAvg){
+    const o=document.createElement('option');
+    o.value='avg'; o.textContent='متوسط كل الأسابيع (من 100)';
+    selEl.appendChild(o);
+  }
+  selEl.value = CUR_WEEK;  /* يفتح تلقائياً الأسبوع الذي حلّ تاريخه */
+}
+
+/* إعادة العرض بعد إغلاق أي نافذة منبثقة (مثل نافذة المجموعة) */
+function lpRefreshAfterModal(cb){
+  const obs=new MutationObserver(()=>{
+    if(!document.querySelector('.modalOverlay')){ obs.disconnect(); cb(); }
+  });
+  obs.observe(document.body,{childList:true});
+}
+
+async function renderLpSheet(cls, w, pane){
+  const wrapEl = pane.querySelector('.lpWrap');
+  const msg = pane.querySelector('.lpMsg');
+  const datesEl = pane.querySelector('.lpDates');
+  if(!(marksCache[cls] && marksCache[cls].loaded)){
+    wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
+    await fetchClassMarks(cls);
+    await fetchExtraStudents(cls);
+  }
+  const students = ROSTERS[cls].students;
+  let dates="";
+  if(w!=='avg'){
+    const wd = weekData(cls, w);
+    if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
+  }
+  datesEl.textContent = dates;
+  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
+  const headers = ['اسم الطالب/ة', ...CRITERIA.map(c=>c+' (5)'), w==='avg'?'المتوسط (100)':'المجموع (30)'];
+  let order = students.map((_,i)=>i);
+  if(lpSheetSort.col!==null){
+    order.sort((a,b)=>{
+      const va=studentValue(cls,w,a,lpSheetSort.col), vb=studentValue(cls,w,b,lpSheetSort.col);
+      let cmp = (typeof va==='string') ? va.localeCompare(vb,'ar') : va-vb;
+      return cmp*lpSheetSort.dir;
+    });
+  }
+  let h = `<table class="sheet"><tr><th style="cursor:default">م</th>`;
+  headers.forEach((hd,idx)=>{
+    const c = cols[idx];
+    const arrow = lpSheetSort.col===c ? (lpSheetSort.dir===1?'▲':'▼') : '';
+    const fillBtn = (w!=='avg' && c!=='name' && c!=='total') ? `<button class="fillBtn" data-fillcol="${c}" title="تعميم درجة على كل خلايا العمود">⤵</button>` : '';
+    h += `<th data-col="${c}">${hd}${fillBtn}<span class="arrow">${arrow}</span></th>`;
+  });
+  h += `</tr>`;
+  order.forEach((si,r)=>{
+    const rowFill = (w!=='avg') ? ` <button class="fillBtn" data-fillrow="${si}" title="تعميم درجة على كل معايير الطالب هذا الأسبوع">⤵</button>` : '';
+    h += `<tr><td>${r+1}</td><td class="name">${students[si]}${rowFill}</td>`;
+    for(let ci=0;ci<CRITERIA.length;ci++){
+      if(w==='avg'){
+        const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
+        h += `<td style="${markColor(v)}" class="${markClass(v)}">${v}</td>`;
+      } else {
+        const v = getMark(cls,w,si,ci);
+        h += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
+      }
+    }
+    const tot = w==='avg' ? avgOf(cls,si) : studentValue(cls,w,si,'total');
+    h += `<td class="total">${tot}</td></tr>`;
+  });
+  h += `</table>`;
+  wrapEl.innerHTML = h;
+  wrapEl.querySelectorAll('th[data-col]').forEach(th=>{
+    th.onclick=()=>{
+      const c=th.dataset.col;
+      if(lpSheetSort.col===c){ lpSheetSort.dir*=-1; } else { lpSheetSort={col:c,dir:1}; }
+      renderLpSheet(cls,w,pane);
+    };
+  });
+  if(w!=='avg'){
+    wrapEl.querySelectorAll('[data-fillcol]').forEach(b=>{
+      b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'students'); };
+    });
+    wrapEl.querySelectorAll('[data-fillrow]').forEach(b=>{
+      b.onclick=()=>{ fillRow(cls,w,+b.dataset.fillrow,'students'); };
+    });
+    enableArrowNav(wrapEl);
+  }
+  wrapEl.querySelectorAll('input[data-si]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      let v = inp.value.trim();
+      if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
+      else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(7,n)); }
+      inp.value=v;
+      const si=+inp.dataset.si, ci=+inp.dataset.ci;
+      const store = marksCache[cls].data;
+      if(!store[w]) store[w]={};
+      if(!store[w][si]) store[w][si]={};
+      store[w][si][ci]=v;
+      if(typeof syncGroupFromStudent==='function'){ syncGroupFromStudent(cls,w,si,ci); }
+      inp.className=markClass(v);
+      inp.setAttribute('style', markColor(v));
+      inp.closest('tr').querySelector('.total').textContent = studentValue(cls,w,si,'total');
+      msg.textContent='جارٍ الحفظ…';
+      try{
+        await pushMark(cls,w,si,ci,v);
+        msg.textContent='تم الحفظ في قاعدة البيانات ✓';
+      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      setTimeout(()=>msg.textContent='',2000);
+      const gPane = document.querySelector('#lessonPage #lpPaneGroups');
+      if(gPane && gPane.style.display!=='none'){
+        const gw = +gPane.querySelector('.lpWeekSel').value;
+        renderLpGroups(cls, gw, gPane);
+      }
+    });
+  });
+}
+
+async function renderLpGroups(cls, w, pane){
+  const wrapEl = pane.querySelector('.lpWrap');
+  const msg = pane.querySelector('.lpMsg');
+  const datesEl = pane.querySelector('.lpDates');
+  if(!(groupsCache[cls] && groupsCache[cls].loaded)){
+    wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل المجموعات من قاعدة البيانات…</div>';
+    await fetchGroups(cls);
+  }
+  let dates="";
+  const wd = weekData(cls, w);
+  if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
+  datesEl.textContent = dates;
+  const defs = groupsCache[cls].defs;
+  if(!defs.length){
+    wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">لا توجد مجموعات بعد — اضغط «+ إضافة مجموعة» للبدء.</div>';
+    return;
+  }
+  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
+  const headers = ['اسم المجموعة', ...CRITERIA.map(c=>c+' (5)'), 'المجموع (30)'];
+  let order = defs.map((_,i)=>i);
+  if(lpGroupSort.col!==null){
+    order.sort((a,b)=>{
+      let va,vb;
+      if(lpGroupSort.col==='name'){ va=defs[a].name; vb=defs[b].name; return va.localeCompare(vb,'ar')*lpGroupSort.dir; }
+      if(lpGroupSort.col==='total'){ va=groupTotal(cls,defs[a].id,w); vb=groupTotal(cls,defs[b].id,w); }
+      else { va=markNum(getGroupMark(cls,defs[a].id,w,+lpGroupSort.col)); vb=markNum(getGroupMark(cls,defs[b].id,w,+lpGroupSort.col)); }
+      return (va-vb)*lpGroupSort.dir;
+    });
+  }
+  let h = `<table class="sheet"><tr><th style="cursor:default">م</th>`;
+  headers.forEach((hd,idx)=>{
+    const c = cols[idx];
+    const arrow = lpGroupSort.col===c ? (lpGroupSort.dir===1?'▲':'▼') : '';
+    const fillBtn = (c!=='name' && c!=='total') ? `<button class="fillBtn" data-fillcol="${c}" title="تعميم درجة على كل خلايا العمود">⤵</button>` : '';
+    h += `<th data-col="${c}">${hd}${fillBtn}<span class="arrow">${arrow}</span></th>`;
+  });
+  h += `</tr>`;
+  order.forEach((di,r)=>{
+    const d = defs[di];
+    h += `<tr><td>${r+1}</td><td class="name"><button class="gnameBtn" data-gid="${d.id}">${d.name}</button> <span class="mcount">(${d.members.length} طالب)</span> <button class="fillBtn" data-fillrow="${di}" title="تعميم درجة على كل معايير المجموعة هذا الأسبوع">⤵</button></td>`;
+    for(let ci=0;ci<CRITERIA.length;ci++){
+      const v = getGroupMark(cls,d.id,w,ci);
+      h += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-gid="${d.id}" data-ci="${ci}" title="درجة 0-7 أو غ"></td>`;
+    }
+    h += `<td class="total">${groupTotal(cls,d.id,w)}</td></tr>`;
+  });
+  h += `</table>`;
+  wrapEl.innerHTML = h;
+  wrapEl.querySelectorAll('th[data-col]').forEach(th=>{
+    th.onclick=()=>{
+      const c=th.dataset.col;
+      if(lpGroupSort.col===c){ lpGroupSort.dir*=-1; } else { lpGroupSort={col:c,dir:1}; }
+      renderLpGroups(cls,w,pane);
+    };
+  });
+  wrapEl.querySelectorAll('.gnameBtn').forEach(b=>{
+    b.onclick=()=>{
+      openGroupModal(cls, b.dataset.gid);
+      lpRefreshAfterModal(()=>{ renderLpGroups(cls,w,pane);
+        const sPane=document.querySelector('#lessonPage #lpPaneSheet');
+        if(sPane && sPane.style.display!=='none'){
+          const sw=sPane.querySelector('.lpWeekSel').value;
+          renderLpSheet(cls, sw==='avg'?'avg':+sw, sPane);
+        }
+      });
+    };
+  });
+  wrapEl.querySelectorAll('[data-fillcol]').forEach(b=>{
+    b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'groups'); };
+  });
+  wrapEl.querySelectorAll('[data-fillrow]').forEach(b=>{
+    b.onclick=()=>{ fillRow(cls,w,groupsCache[cls].defs[+b.dataset.fillrow].id,'groups'); };
+  });
+  enableArrowNav(wrapEl);
+  wrapEl.querySelectorAll('input[data-gid]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      let v = inp.value.trim();
+      if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
+      else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(7,n)); }
+      inp.value=v;
+      const gid=inp.dataset.gid, ci=+inp.dataset.ci;
+      inp.className=markClass(v);
+      inp.setAttribute('style', markColor(v));
+      const tr=inp.closest('tr');
+      msg.textContent='جارٍ الحفظ وتطبيقها على الأعضاء…';
+      try{
+        await setGroupMark(cls,gid,w,ci,v);
+        tr.querySelector('.total').textContent = groupTotal(cls,gid,w);
+        msg.textContent='تم الحفظ وتطبيقها على الأعضاء ✓';
+        const sPane = document.querySelector('#lessonPage #lpPaneSheet');
+        if(sPane && sPane.style.display!=='none'){
+          const sw = sPane.querySelector('.lpWeekSel').value;
+          if(sw!=='avg') renderLpSheet(cls, +sw, sPane);
+        }
+        if(document.getElementById('sec-sheets').classList.contains('active') && curSheet===cls) renderSheet();
+      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      setTimeout(()=>msg.textContent='',2500);
+    });
+  });
+}
+
+function initLpClassPanes(cls, lp){
+  const sPane = lp.querySelector('#lpPaneSheet');
+  const gPane = lp.querySelector('#lpPaneGroups');
+  /* كشف الطلاب */
+  const sSel = sPane.querySelector('.lpWeekSel');
+  lpFillWeeks(sSel, true);
+  sSel.addEventListener('change', ()=>{
+    renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
+  });
+  sPane.querySelector('.lpAddStu').onclick=()=>{
+    const ov = openModal(`
+      <h3>إضافة طالب — ${ROSTERS[cls].class}</h3>
+      <div class="frow"><label>اسم الطالب</label><input id="nsName" placeholder="الاسم الثلاثي"></div>
+      <div class="pkBtns"><button class="pbtn2" id="nsSave">إضافة للكشف</button><button class="pbtn2 ghost" id="nsCancel">إلغاء</button></div>`);
+    const inp=ov.querySelector('#nsName');
+    inp.focus();
+    const save=async ()=>{
+      const nm=inp.value.trim();
+      if(!nm){ inp.focus(); return; }
+      if(ROSTERS[cls].students.includes(nm)){ inp.value=''; inp.placeholder='الاسم موجود مسبقاً!'; inp.focus(); return; }
+      ROSTERS[cls].students.push(nm);
+      const extra = ROSTERS[cls].students.slice(
+        cls==='g4'?23 : cls==='g5'?27 : cls==='g6'?20 : 27);
+      await sb.from('marks').upsert({class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
+        value:JSON.stringify(extra), updated_at:new Date().toISOString()});
+      ov.remove();
+      renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
+    };
+    ov.querySelector('#nsSave').onclick=save;
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
+    ov.querySelector('#nsCancel').onclick=()=>ov.remove();
+  };
+  /* درجات المجموعات */
+  const gSel = gPane.querySelector('.lpWeekSel');
+  lpFillWeeks(gSel, false);
+  gSel.addEventListener('change', ()=>{ renderLpGroups(cls, +gSel.value, gPane); });
+  gPane.querySelector('.lpAddGrp').onclick=async ()=>{
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+    const ov = openModal(`
+      <h3>إضافة مجموعة جديدة — ${ROSTERS[cls].class}</h3>
+      <div class="frow"><label>اسم المجموعة</label><input id="ngName" placeholder="مثال: مجموعة النور"></div>
+      <div class="pkBtns"><button class="pbtn2" id="ngSave">إضافة</button><button class="pbtn2 ghost" id="ngCancel">إلغاء</button></div>`);
+    const nameInp = ov.querySelector('#ngName');
+    nameInp.focus();
+    const save = async ()=>{
+      const name = nameInp.value.trim();
+      if(!name){ nameInp.focus(); return; }
+      groupsCache[cls].defs.push({id:Date.now(), name, leader:null, members:[]});
+      await saveGroupDefs(cls);
+      ov.remove(); renderLpGroups(cls, +gSel.value, gPane);
+    };
+    ov.querySelector('#ngSave').onclick=save;
+    nameInp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
+    ov.querySelector('#ngCancel').onclick=()=>ov.remove();
+  };
+  /* عرض مبدئي على الأسبوع الحالي */
+  renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
+  renderLpGroups(cls, +gSel.value, gPane);
+}
+
 function openLessonPage(cls,w,li){
   const wd = weekData(cls,w);
   if(!wd || !wd.lessons || !wd.lessons[li]) return;
@@ -3346,6 +3772,8 @@ function openLessonPage(cls,w,li){
       <button class="tab active" data-pane="lpPaneVideo">فيديو الشرح</button>
       <button class="tab" data-pane="lpPaneBook">الكتاب</button>
       <button class="tab" data-pane="lpPaneQuiz">اختبر معلوماتك</button>
+      <button class="tab" data-pane="lpPaneSheet">كشف الطلاب</button>
+      <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
     </div>
     <div class="lpPane" id="lpPaneVideo">
       <div class="videoBox"><iframe src="${ytId ? 'https://www.youtube-nocookie.com/embed/' + ytId : 'https://www.youtube-nocookie.com/embed?listType=search&list=' + q}" title="شرح الدرس" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
@@ -3365,6 +3793,7 @@ function openLessonPage(cls,w,li){
             <button class="bTool" id="bkZoomReset" title="إعادة الضبط">🔍</button>
           </div>
           <div class="bgrp">
+            <button class="bTool" data-btool="pan" title="إمساك وتحريك">✋</button>
             <button class="bTool on" data-btool="pen" title="قلم">✏️</button>
             <button class="bTool" data-btool="hl" title="قلم تحديد">🖍️</button>
             <button class="bTool" data-btool="erase" title="ممحاة">🧽</button>
@@ -3382,10 +3811,32 @@ function openLessonPage(cls,w,li){
             <button class="bTool" id="bkClear" title="مسح الكل للصفحة الحالية">🗑️</button>
           </div>
         </div>
-        <div id="bookZoom">` + pages.map(p=>`<div class="bookPgW" data-src="${p}"><img class="bookPg" loading="lazy" src="${p}" alt="صفحة من الكتاب"><canvas class="bookCv draw"></canvas></div>`).join('') + `</div>`
+        <div id="bookScroll"><div id="bookZoom">` + pages.map(p=>`<div class="bookPgW" data-src="${p}"><img class="bookPg" loading="lazy" draggable="false" src="${p}" alt="صفحة من الكتاب"><canvas class="bookCv draw"></canvas></div>`).join('') + `</div></div>`
         : '<div class="ddEmpty" style="margin-top:14px">لا توجد صفحات كتاب مرتبطة بهذا الدرس (دروس القرآن الكريم حفظاً وتلاوة ليس لها صفحات في كتاب الدراسات).</div>'}
     </div>
     <div class="lpPane" id="lpPaneQuiz" style="display:none"></div>
+    <div class="lpPane" id="lpPaneSheet" style="display:none">
+      <div class="controls">
+        <label>الأسبوع:</label>
+        <select class="lpWeekSel"></select>
+        <span class="week-dates lpDates"></span>
+        <button class="pbtn2 ghost lpAddStu">+ إضافة طالب</button>
+        <span class="saved lpMsg"></span>
+      </div>
+      <div style="overflow-x:auto" class="lpWrap"></div>
+      <div class="note">يعرض هذا الكشف طلاب ${c.grade} — ${c.subject} فقط. التعديلات تُحفظ فوراً في قاعدة البيانات السحابية وتنعكس تلقائياً على الكشوف الرئيسية.</div>
+    </div>
+    <div class="lpPane" id="lpPaneGroups" style="display:none">
+      <div class="controls">
+        <button class="pbtn2 ghost lpAddGrp">+ إضافة مجموعة</button>
+        <label>الأسبوع:</label>
+        <select class="lpWeekSel"></select>
+        <span class="week-dates lpDates"></span>
+        <span class="saved lpMsg"></span>
+      </div>
+      <div style="overflow-x:auto" class="lpWrap"></div>
+      <div class="note">درجات مجموعات ${c.grade} فقط. تعديل درجة المجموعة يُطبَّق فوراً على جميع أعضائها في كشف الطلاب.</div>
+    </div>
   </div>`;
   lp.style.display='block';
   document.body.style.overflow='hidden';
@@ -3413,6 +3864,7 @@ function openLessonPage(cls,w,li){
   });
   renderQuiz(cls,w,li,lp.querySelector('#lpPaneQuiz'));
   initBookTab(cls,w,li,lp.querySelector('#lpPaneBook'));
+  initLpClassPanes(cls, lp);
   /* الاختيار التلقائي من صفحة الدرس */
   lp.querySelector('#lpPick').onclick=()=>{
     const ov2 = openModal(`
@@ -3462,6 +3914,8 @@ document.addEventListener('click', e=>{
 
 /* تحميل حالة الدروس لكل الفصول في الخلفية */
 (async ()=>{ for(const k of sheetKeys){ await fetchLessonsDone(k); } applyLessonDone(); })();
+/* إعادة رسم جدول المعلم بعد توفر بيانات المواد (BOOKDATA) لعرض مربعات المواد وترتيب الدروس */
+if(typeof renderSchedule==='function') renderSchedule();
 
 /* ====== إضافة طالب للكشف ====== */
 document.getElementById('addStuBtn').onclick=()=>{
