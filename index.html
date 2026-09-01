@@ -2062,11 +2062,11 @@ async function setGroupPoints(cls,gid,w,v){
 async function addGroupPoints(cls,gid,w,delta){
   await setGroupPoints(cls,gid,w, Math.max(0, getGroupPoints(cls,gid,w)+delta));
 }
-/* المجموع الكلي من بداية الفصل (مجموع نقاط كل الأسابيع) */
-function groupTotalAll(cls,gid){
+/* المجموع الكلي من بداية الفصل حتى الأسبوع المحدد (نقاط هذا الأسبوع + الأسابيع السابقة فقط) */
+function groupTotalAll(cls,gid,w){
   let s=0;
   (CURRICULA[cls] ? CURRICULA[cls].weeks : []).forEach(wd=>{
-    if(typeof wd.week==='number' && wd.week<18) s+=getGroupPoints(cls,gid,wd.week);
+    if(typeof wd.week==='number' && wd.week<18 && wd.week<=w) s+=getGroupPoints(cls,gid,wd.week);
   });
   return s;
 }
@@ -2104,7 +2104,7 @@ async function renderGroups(){
     order.sort((a,b)=>{
       let va,vb;
       if(gSortState.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*gSortState.dir; }
-      if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id); vb=groupTotalAll(cls,defs[b].id); }
+      if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*gSortState.dir;
     });
@@ -2126,7 +2126,7 @@ async function renderGroups(){
         <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
-      <td class="total">${groupTotalAll(cls,d.id)}</td></tr>`;
+      <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   html += `</table>`;
   wrapEl.innerHTML = html;
@@ -2155,12 +2155,12 @@ async function renderGroups(){
       const nv=Math.max(0, getGroupPoints(cls,gid,w)+d);
       inp.value=nv;
       inp.classList.toggle('low', nv<20);
-      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid) + d;
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w) + d;
       try{
         await addGroupPoints(cls,gid,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
-      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid);
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
   });
@@ -2173,7 +2173,7 @@ async function renderGroups(){
       inp.value=v;
       inp.classList.toggle('low', v<20);
       await savePts(inp.dataset.gid, v);
-      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid);
+      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid,w);
     });
   });
 }
@@ -3611,7 +3611,7 @@ async function renderLpGroups(cls, w, pane){
     order.sort((a,b)=>{
       let va,vb;
       if(lpGroupSort.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*lpGroupSort.dir; }
-      if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id); vb=groupTotalAll(cls,defs[b].id); }
+      if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*lpGroupSort.dir;
     });
@@ -3633,7 +3633,7 @@ async function renderLpGroups(cls, w, pane){
         <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
-      <td class="total">${groupTotalAll(cls,d.id)}</td></tr>`;
+      <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   h += `</table>`;
   wrapEl.innerHTML = h;
@@ -3662,7 +3662,7 @@ async function renderLpGroups(cls, w, pane){
         await addGroupPoints(cls,gid,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
-      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid);
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
   });
@@ -3677,7 +3677,7 @@ async function renderLpGroups(cls, w, pane){
       msg.textContent='جارٍ الحفظ…';
       try{ await setGroupPoints(cls,inp.dataset.gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
       catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
-      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid);
+      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid,w);
       setTimeout(()=>msg.textContent='',2000);
     });
   });
