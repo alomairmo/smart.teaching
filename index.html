@@ -3738,17 +3738,36 @@ function initLpClassPanes(cls, w, li, lp){
     nameInp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
     ov.querySelector('#ngCancel').onclick=()=>ov.remove();
   };
-  /* حرب السفن */
+  /* حرب السفن — تعمل داخل التبويب مباشرة وتبقى شغالة عند التنقل بين التبويبات */
   const shipsSel = lp.querySelector('.lpShipsWeek');
   lpFillWeeks(shipsSel, false);
   shipsSel.value = CUR_WEEK;
+  const shipsStage = lp.querySelector('.lpShipsStage');
+  const shipsCard  = lp.querySelector('.lpShipsCard');
+  lp.querySelector('.lpShipsBack').onclick=()=>{
+    /* إخفاء اللعبة مؤقتاً وعرض الإعدادات — اللعبة تبقى محفوظة بحالتها */
+    shipsStage.style.display='none';
+    shipsCard.style.display='';
+  };
   lp.querySelector('.lpShipsPlay').onclick=()=>{
     const gw = +shipsSel.value;
-    const ov2=document.createElement('div');
-    ov2.className='shipsOverlay';
-    ov2.innerHTML=`<button class="shipsClose">✖ إغلاق اللعبة</button><iframe src="battleship.html?cls=${cls}&w=${gw}" style="width:100%;height:100%;border:0" allow="autoplay"></iframe>`;
-    document.body.appendChild(ov2);
-    const ifr=ov2.querySelector('iframe');
+    let ifr = shipsStage.querySelector('iframe');
+    if(ifr && +ifr.dataset.w === gw){
+      /* اللعبة قائمة بالفعل لنفس الأسبوع — عرضها كما هي دون إعادة تشغيل */
+      shipsCard.style.display='none';
+      shipsStage.style.display='';
+      return;
+    }
+    /* أسبوع مختلف أو أول تشغيل — إنشاء لعبة جديدة */
+    if(ifr) ifr.remove();
+    ifr=document.createElement('iframe');
+    ifr.dataset.w=gw;
+    ifr.src=`battleship.html?cls=${cls}&w=${gw}`;
+    ifr.setAttribute('allow','autoplay');
+    ifr.style.cssText='width:100%;height:72vh;min-height:480px;border:0;border-radius:12px;background:#0b1720';
+    shipsStage.appendChild(ifr);
+    shipsCard.style.display='none';
+    shipsStage.style.display='';
     ifr.addEventListener('load', async ()=>{
       /* تمرير أسئلة الدرس (الجاهزة + أسئلة المعلم) للعبة */
       const key=lessonKey(w,li);
@@ -3761,13 +3780,6 @@ function initLpClassPanes(cls, w, li, lp){
       }).filter(q=>q.options.length===3);
       try{ ifr.contentWindow.postMessage({type:'questions', list}, '*'); }catch(e){}
     });
-    ov2.querySelector('.shipsClose').onclick=()=>{
-      ov2.remove();
-      /* تحديث كشف المجموعات بعد اللعب */
-      if(groupsCache[cls]) groupsCache[cls].loaded=false;
-      renderLpGroups(cls, +gSel.value, gPane);
-      if(document.getElementById('sec-groups').classList.contains('active')) renderGroups();
-    };
   };
   /* عرض مبدئي على الأسبوع الحالي */
   renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
@@ -3869,13 +3881,19 @@ function openLessonPage(cls,w,li){
       <div class="note">نقاط مجموعات ${c.grade} فقط — كل أسبوع يبدأ من 20 نقطة، ويزيد وينقص بأزرار +5 و−5، مع المجموع الكلي من بداية الفصل.</div>
     </div>
     <div class="lpPane" id="lpPaneShips" style="display:none">
-      <div class="weekcard" style="margin-top:14px;text-align:center">
+      <div class="weekcard lpShipsCard" style="margin-top:14px;text-align:center">
         <h3>🚢 حرب السفن المعرفية</h3>
         <div class="note" style="text-align:right">لعبة جماعية ثلاثية الأبعاد: كل سفينة تمثل مجموعة من مجموعات ${c.grade}، ونقاط صحتها هي <b>نقاط المجموعة في الأسبوع المحدد</b> — أي زيادة أو نقصان أثناء اللعب (إجابة صحيحة +5، إصابة سفينة، ألغام…) يُحفظ فوراً في كشف المجموعات. أسئلة «اختبر معلوماتك» لهذا الدرس تُمرَّر للعبة تلقائياً.</div>
         <div class="controls" style="justify-content:center;margin-top:10px">
           <label>الأسبوع:</label>
           <select class="lpShipsWeek"></select>
           <button class="pbtn2 lpShipsPlay">🚢 تشغيل اللعبة</button>
+        </div>
+      </div>
+      <div class="lpShipsStage" style="display:none;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لتبويب الكتاب أو أي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpShipsBack">⚙️ إعدادات اللعبة</button>
         </div>
       </div>
     </div>
@@ -3892,6 +3910,12 @@ function openLessonPage(cls,w,li){
     lp.querySelectorAll('.lpPane').forEach(pn=>pn.style.display='none');
     lp.querySelector('#'+t.dataset.pane).style.display='';
     lp.scrollTop = 0;
+    /* عند فتح تبويب درجات المجموعات: تحديثه ليعكس أي نقاط تغيّرت أثناء لعب حرب السفن */
+    if(t.dataset.pane==='lpPaneGroups'){
+      if(groupsCache[cls]) groupsCache[cls].loaded=false;
+      const gPn = lp.querySelector('#lpPaneGroups');
+      renderLpGroups(cls, +gPn.querySelector('.lpWeekSel').value, gPn);
+    }
     if(syncState.mode==='full' && !syncState.isRemote) syncSend({k:'tab', pane:t.dataset.pane});
   });
   lp.querySelector('#lpSyncBtn').onclick=e=>{ e.stopPropagation(); syncToggleMenu(); };
