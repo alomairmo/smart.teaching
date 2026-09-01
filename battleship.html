@@ -1,0 +1,1869 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>حرب السفن المعرفية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        .fade-in {
+            animation: fadeIn .45s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0
+            }
+
+            to {
+                opacity: 1
+            }
+        }
+
+        .ship-hud {
+            transition: all .3s;
+        }
+
+        .dead-ship {
+            filter: grayscale(100%);
+            opacity: .4;
+            pointer-events: none;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            display: none;
+            z-index: 15;
+            opacity: .85;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, .9);
+            box-shadow: 0 0 4px rgba(0, 0, 0, .8);
+        }
+
+        #crosshair::before {
+            top: 19px;
+            left: 0;
+            width: 40px;
+            height: 2px;
+        }
+
+        #crosshair::after {
+            top: 0;
+            left: 19px;
+            width: 2px;
+            height: 40px;
+        }
+
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .ship-label {
+            position: absolute;
+            text-align: center;
+            font-weight: bold;
+            font-size: .9rem;
+            pointer-events: none;
+        }
+
+        /* Hidden utility (fallback in case Tailwind CDN is slow) */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Energy bar */
+        .energy-bar-wrap {
+            position: relative;
+            width: 100%;
+            height: 7px;
+            background: #1e293b;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid rgba(251, 191, 36, .3);
+        }
+
+        .energy-bar-fill {
+            height: 100%;
+            background: #fbbf24;
+            transition: width .4s;
+            border-radius: 4px;
+        }
+
+        .energy-divider {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 1px;
+            background: rgba(0, 0, 0, .5);
+        }
+
+        /* Power-up badge */
+        .pu-badge {
+            font-size: .7rem;
+            background: rgba(251, 191, 36, .2);
+            border: 1px solid #fbbf24;
+            border-radius: 6px;
+            padding: 1px 5px;
+            color: #fbbf24;
+            white-space: nowrap;
+        }
+
+        /* Buttons */
+        #copy-scores-btn {
+            background: linear-gradient(135deg, #1e293b, #334155);
+            border: 1px solid rgba(251, 191, 36, .5);
+            color: #fbbf24;
+            font-weight: bold;
+            font-size: .75rem;
+            padding: 4px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all .2s;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
+        }
+
+        #copy-scores-btn:hover {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            color: #1e293b;
+        }
+
+        #replay-questions-btn,
+        #add-questions-btn-main {
+            margin-top: 8px;
+            width: 100%;
+            padding: 8px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: .88rem;
+            cursor: pointer;
+            transition: all .2s;
+        }
+
+        #replay-questions-btn {
+            border: 2px solid #fbbf24;
+            background: rgba(251, 191, 36, .1);
+            color: #fbbf24;
+        }
+
+        #replay-questions-btn:hover:not(:disabled) {
+            background: #fbbf24;
+            color: #1e293b;
+        }
+
+        #replay-questions-btn:disabled {
+            opacity: .3;
+            cursor: not-allowed;
+            border-color: #555;
+            color: #555;
+        }
+
+        #add-questions-btn-main {
+            border: 2px solid #60a5fa;
+            background: rgba(96, 165, 250, .1);
+            color: #60a5fa;
+        }
+
+        #add-questions-btn-main:hover {
+            background: #60a5fa;
+            color: #1e293b;
+        }
+
+        /* Movement */
+        .move-dir-btn {
+            width: 52px;
+            height: 52px;
+            background: rgba(59, 130, 246, .88);
+            border: 2px solid rgba(147, 197, 253, .55);
+            border-radius: 12px;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: all .15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
+        }
+
+        .move-dir-btn:hover:not(:disabled) {
+            background: rgba(96, 165, 250, 1);
+            transform: scale(1.1);
+        }
+
+        .move-dir-btn:disabled {
+            opacity: .22;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .move-act-btn {
+            flex: 1;
+            padding: 9px 6px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: .88rem;
+            cursor: pointer;
+            transition: all .18s;
+            border: none;
+        }
+
+        .move-act-btn:disabled {
+            opacity: .3;
+            cursor: not-allowed;
+        }
+
+        /* Modal */
+        #add-q-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, .7);
+            backdrop-filter: blur(4px);
+        }
+
+        #add-q-modal.show {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="crosshair"></div>
+    <div id="canvas-container"></div>
+    <div id="labels-container" class="hidden"></div>
+
+    <!-- Add Questions Modal -->
+    <div id="add-q-modal">
+        <div class="bg-slate-800 text-white p-6 rounded-2xl shadow-2xl border-4 border-blue-400 mx-4 fade-in"
+            style="width:100%;max-width:520px;">
+            <h3 class="text-2xl font-bold text-blue-300 mb-3 text-center">➕ إضافة أسئلة جديدة</h3>
+            <p class="text-xs text-gray-400 mb-3 text-center">سطر للسؤال ثم 3 أسطر للخيارات. الأول هو الصحيح. اللعبة
+                تستمر.</p>
+            <textarea id="add-q-input"
+                class="w-full h-36 p-3 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-right mb-4"
+                placeholder="السؤال الجديد؟&#10;الإجابة الصحيحة&#10;خيار 2&#10;خيار 3"></textarea>
+            <div class="flex gap-3">
+                <button onclick="addNewQuestions()"
+                    class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-lg">إضافة
+                    ✅</button>
+                <button onclick="closeAddQ()"
+                    class="flex-1 bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 rounded-lg text-lg">إغلاق
+                    ✖️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Layer -->
+    <div class="ui-layer flex flex-col justify-between h-full p-2 md:p-3">
+
+        <!-- HUD -->
+        <div class="w-full flex flex-col items-center gap-1 interactive">
+            <div id="hud" class="w-full flex justify-center gap-1 md:gap-2 flex-wrap hidden mt-1"></div>
+            <div id="copy-scores-row" class="hidden mt-1">
+                <button id="copy-scores-btn" onclick="copyScores()">📋 نسخ الدرجات</button>
+            </div>
+        </div>
+
+        <!-- Center -->
+        <div id="center-ui-container"
+            class="flex-1 flex items-center justify-center interactive w-full max-w-4xl mx-auto">
+
+            <!-- Setup -->
+            <div id="setup-screen"
+                class="bg-slate-800 text-white p-6 rounded-xl shadow-2xl w-full max-w-2xl border-4 border-slate-600 fade-in m-4">
+                <h1 class="text-3xl font-bold text-center mb-4 text-yellow-400">حرب السفن المعرفية ⚓</h1>
+                <p id="setup-week-note" class="text-sm text-yellow-300 mb-2 text-center font-bold"></p>
+                <p class="text-sm text-gray-300 mb-4 text-center">
+                    الصق الأسئلة (اختياري). الخيار الأول دائماً هو الصحيح.<br>
+                    <span class="text-blue-300">يمكن البدء بدون أسئلة — سيظهر وضع سؤال المعلم.</span>
+                </p>
+                <textarea id="questions-input"
+                    class="w-full h-40 p-3 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right mb-4"
+                    placeholder="السؤال&#10;الإجابة الصحيحة&#10;إجابة خاطئة&#10;إجابة خاطئة&#10;..."></textarea>
+                <button id="start-btn"
+                    class="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold py-3 rounded text-xl transition-colors">ابدأ
+                    اللعبة 🚀</button>
+            </div>
+
+            <!-- Trivia -->
+            <div id="trivia-screen"
+                class="bg-slate-800 text-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-2xl border-4 hidden fade-in text-center relative overflow-hidden m-4">
+                <div id="turn-indicator" class="absolute top-0 right-0 w-full h-2"></div>
+                <h2 class="text-2xl font-bold mb-3">دور: <span id="turn-team-name" class="text-yellow-400">المجموعة
+                        1</span></h2>
+                <!-- Energy bar at start of turn -->
+                <div id="turn-energy-wrap" class="mb-4 hidden">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-yellow-400 text-xs font-bold">⚡ الطاقة</span>
+                        <span id="turn-energy-num" class="text-yellow-300 font-bold text-sm">0</span>
+                    </div>
+                    <div class="energy-bar-wrap" id="turn-energy-bar-outer" style="height:10px;">
+                        <div id="turn-energy-fill" class="energy-bar-fill"></div>
+                    </div>
+                </div>
+                <div id="question-container">
+                    <p id="question-text"
+                        class="text-xl md:text-2xl mb-6 font-semibold text-yellow-300 leading-relaxed"></p>
+                    <div id="options-container" class="grid grid-cols-1 gap-3"></div>
+                    <button id="replay-questions-btn" onclick="replayPreviousQuestions()" disabled>🔄 إعادة الأسئلة
+                        السابقة</button>
+                    <button id="add-questions-btn-main" onclick="openAddQ()">➕ إضافة أسئلة جديدة</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual PU Modal -->
+        <div id="manual-pu-modal"
+            class="hidden absolute inset-0 bg-black/80 z-[100] flex items-center justify-center fade-in">
+            <div
+                class="bg-slate-800 p-6 rounded-2xl border-4 border-slate-600 text-center max-w-lg w-[90%] pointer-events-auto">
+                <h2 class="text-2xl font-bold mb-4 text-white">منح تعزيز مباشر لـ <span id="manual-pu-ship-name"
+                        class="text-yellow-400"></span></h2>
+                <div id="pu-grid" class="flex flex-wrap gap-2 justify-center"></div>
+                <button
+                    class="mt-6 bg-gray-600 hover:bg-gray-500 text-white px-8 py-2 rounded-xl border-2 border-gray-500 font-bold"
+                    onclick="document.getElementById('manual-pu-modal').classList.add('hidden')">إلغاء</button>
+            </div>
+        </div>
+
+        <!-- Shooting UI -->
+        <div id="shooting-screen" class="hidden absolute top-0 left-0 w-full h-full pointer-events-none fade-in">
+            <div id="shooting-instructions"
+                class="absolute top-20 left-1/2 transform -translate-x-1/2 bg-black/80 px-6 py-3 rounded-full border border-yellow-500 text-yellow-300 font-bold text-lg text-center shadow-lg backdrop-blur-sm w-11/12 max-w-xl">
+            </div>
+            <div id="aiming-ui">
+                <div
+                    class="absolute right-4 top-1/2 transform -translate-y-1/2 flex flex-col items-center bg-black/60 p-3 rounded-xl border border-white/20 shadow-lg">
+                    <span class="text-white text-sm font-bold mb-2">أعلى ⬆️</span>
+                    <div class="h-48 w-4 bg-slate-800 rounded-full relative overflow-hidden border border-slate-600">
+                        <div id="bar-pitch"
+                            class="absolute bottom-0 left-0 w-full bg-yellow-400 transition-all duration-100"></div>
+                    </div>
+                    <span class="text-white text-sm font-bold mt-2">أسفل ⬇️</span>
+                    <span class="text-yellow-400 text-xs mt-1 font-bold">الارتفاع</span>
+                </div>
+                <div
+                    class="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-full max-w-lg px-8 flex flex-col items-center gap-2">
+                    <div
+                        class="w-full bg-black/60 p-3 rounded-xl border border-white/20 shadow-lg flex flex-col items-center">
+                        <div class="flex justify-between w-full text-white text-sm font-bold mb-2 px-2">
+                            <span>← غرب</span><span class="text-yellow-400 text-xs">اتجاه 360°</span><span>شرق →</span>
+                        </div>
+                        <div
+                            class="w-full h-4 bg-slate-800 rounded-full relative border border-slate-600 overflow-hidden">
+                            <div id="bar-yaw"
+                                class="absolute top-0 w-2 h-full bg-yellow-400 rounded-full transition-all duration-100 transform -translate-x-1/2">
+                            </div>
+                            <div
+                                class="absolute top-1/2 left-1/2 w-0.5 h-full bg-white/30 transform -translate-x-1/2 -translate-y-1/2">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="power-ui" class="hidden">
+                <div
+                    class="absolute left-8 top-1/2 transform -translate-y-1/2 flex flex-col items-center bg-black/80 p-4 rounded-xl border border-red-500 shadow-[0_0_15px_rgba(220,38,38,.5)]">
+                    <span class="text-red-400 text-sm font-bold mb-2">قوي ⬆️</span>
+                    <div class="h-64 w-8 bg-slate-800 rounded-full relative overflow-hidden border border-slate-600">
+                        <div id="bar-power"
+                            class="absolute bottom-0 left-0 w-full bg-red-500 transition-all duration-100"></div>
+                    </div>
+                    <span class="text-white text-sm font-bold mt-2">ضعيف ⬇️</span>
+                    <span class="text-red-400 text-sm mt-1 font-bold">القوة</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert -->
+        <div id="alert-screen"
+            class="hidden absolute top-1/4 left-1/2 transform -translate-x-1/2 bg-slate-900/95 text-white px-8 py-6 rounded-2xl text-center border-2 z-50 fade-in shadow-2xl backdrop-blur-md w-[90%] max-w-md pointer-events-auto">
+            <h2 id="alert-title" class="text-3xl font-bold mb-4"></h2>
+            <p id="alert-desc" class="text-xl leading-relaxed text-gray-200"></p>
+        </div>
+    </div>
+
+    <!-- Movement Screen -->
+    <div id="movement-screen" class="hidden fixed inset-0 z-30 pointer-events-none">
+        <div
+            class="absolute top-20 left-1/2 transform -translate-x-1/2 bg-black/80 px-5 py-2 rounded-full border border-blue-400 text-blue-200 font-bold text-base shadow-lg backdrop-blur-sm whitespace-nowrap">
+            🚢 حرك سفينتك — أطلق النار — أو تخطى [Esc]
+        </div>
+        <div class="absolute bottom-5 left-1/2 transform -translate-x-1/2 pointer-events-auto">
+            <div id="move-panel"
+                class="bg-slate-900/97 backdrop-blur-md rounded-2xl p-4 border-2 border-yellow-500 shadow-2xl text-white text-center"
+                style="min-width:300px;">
+                <div class="flex items-center justify-center gap-2 mb-1">
+                    <span class="font-bold text-base" id="move-team-name">المجموعة 1</span>
+                    <span id="move-pu-badge" class="pu-badge hidden"></span>
+                </div>
+                <div class="mb-3">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-yellow-400 font-bold">⚡ <span id="move-energy">0</span></span>
+                        <span class="text-gray-500">(تحرك:1⚡ · إطلاق:2⚡)</span>
+                    </div>
+                    <div class="energy-bar-wrap" id="move-energy-bar">
+                        <div id="move-energy-fill" class="energy-bar-fill"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mb-3 mx-auto" style="width:174px;">
+                    <div></div>
+                    <button id="btn-up" class="move-dir-btn" onclick="attemptMove(0,-1)">⬆️</button>
+                    <div></div>
+                    <button id="btn-left" class="move-dir-btn" onclick="attemptMove(-1,0)">⬅️</button>
+                    <div class="bg-slate-700 rounded-xl flex items-center justify-center text-xl"
+                        style="width:52px;height:52px;">🚢</div>
+                    <button id="btn-right" class="move-dir-btn" onclick="attemptMove(1,0)">➡️</button>
+                    <div></div>
+                    <button id="btn-down" class="move-dir-btn" onclick="attemptMove(0,1)">⬇️</button>
+                    <div></div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn-shoot" class="move-act-btn bg-red-600 hover:bg-red-500 text-white"
+                        onclick="proceedToShooting()">
+                        🎯 إطلاق <span class="text-xs opacity-70">(2⚡)</span>
+                    </button>
+                    <button class="move-act-btn bg-slate-600 hover:bg-slate-500 text-white"
+                        onclick="skipMovementTurn()">
+                        ⏭️ تخطي [Esc]
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        //  CONSTANTS
+        // ============================================================
+        const GRID_SIZE = 24;
+        const CELL_SIZE = 120;
+        const MAP_OFFSET = -(GRID_SIZE * CELL_SIZE) / 2; // −1440
+        const NUM_CHESTS = 7;
+        const ENERGY_BAR_MAX = 20; // divisions shown in bar
+
+        const PU_INFO = {
+            shield: { icon: '🛡️', name: 'درع واقٍ', desc: 'حماية لدور واحد من ضربة قادمة' },
+            halfMove: { icon: '⚡½', name: 'خطوة خفيفة', desc: 'الحركة تكلف نصف طاقة لدور واحد' },
+            autoRepeat: { icon: '🔄', name: 'تكرار الإطلاق', desc: 'إعادة الإطلاق بنفس الإعدادات مرة واحدة' },
+            trajectory: { icon: '🎯', name: 'مسار القذيفة', desc: 'إظهار مسار الطلقة قبل الإطلاق' },
+            mines: { icon: '💣', name: 'ألغام بحرية', desc: '3 ألغام بدلاً من القذيفة' },
+            bigCannon: { icon: '💥', name: 'المدفع العملاق', desc: 'قذيفة 4× الحجم وضرر مضاعف' },
+        };
+        const PU_KEYS = Object.keys(PU_INFO); // excludes health10 (instant)
+
+        // ============================================================
+        //  AUDIO SYSTEM
+        // ============================================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain(), t = audioCtx.currentTime;
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            if (type === 'shoot') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+                gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                osc.start(t); osc.stop(t + 0.3);
+            } else if (type === 'explode') {
+                const bs = audioCtx.sampleRate * 0.6, b = audioCtx.createBuffer(1, bs, audioCtx.sampleRate), d = b.getChannelData(0);
+                for (let i = 0; i < bs; i++)d[i] = Math.random() * 2 - 1;
+                const n = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(); n.buffer = b; f.type = 'lowpass';
+                f.frequency.setValueAtTime(1500, t); f.frequency.exponentialRampToValueAtTime(30, t + 0.6);
+                n.connect(f); f.connect(gain);
+                gain.gain.setValueAtTime(1.0, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
+                n.start(t);
+            } else if (type === 'splash') {
+                const bs = audioCtx.sampleRate * 0.3, b = audioCtx.createBuffer(1, bs, audioCtx.sampleRate), d = b.getChannelData(0);
+                for (let i = 0; i < bs; i++)d[i] = Math.random() * 2 - 1;
+                const n = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(); n.buffer = b; f.type = 'bandpass';
+                f.frequency.setValueAtTime(800, t);
+                n.connect(f); f.connect(gain);
+                gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                n.start(t);
+            } else if (type === 'move') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(60, t); osc.frequency.linearRampToValueAtTime(80, t + .1); osc.frequency.linearRampToValueAtTime(60, t + .3);
+                gain.gain.setValueAtTime(0.15, t); gain.gain.linearRampToValueAtTime(0, t + 0.4); osc.start(t); osc.stop(t + 0.4);
+            } else if (type === 'correct') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, t); osc.frequency.setValueAtTime(660, t + .1);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.4); osc.start(t); osc.stop(t + 0.4);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(100, t + .3);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.3); osc.start(t); osc.stop(t + 0.3);
+            } else if (type === 'chest') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, t); osc.frequency.linearRampToValueAtTime(800, t + .1); osc.frequency.linearRampToValueAtTime(1200, t + .2);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.4); osc.start(t); osc.stop(t + 0.4);
+            }
+        }
+
+        // ============================================================
+        //  GAME STATE
+        // ============================================================
+        let questions = [], usedQuestions = [], originalQuestions = [];
+        let terrainGrid = [];      // [gx][gy]: 0=water 1=island 2=mountain
+        let chests = [];            // {gx,gy,mesh,group}
+        let seaMines = [];          // {gx,gy,mesh}
+
+        let shipsData = [];
+        const SHIP_COLORS = [[0xe74c3c,"#e74c3c"],[0x3498db,"#3498db"],[0x2ecc71,"#2ecc71"],[0xf1c40f,"#f1c40f"],[0x9b59b6,"#9b59b6"],[0xe67e22,"#e67e22"],[0x1abc9c,"#1abc9c"],[0x34495e,"#34495e"]];
+
+        // ====== ربط نقاط المجموعات (Supabase) — صحة السفينة = نقاط الأسبوع ======
+        const SB_URL="https://lazyikoawttfcflpdixs.supabase.co", SB_KEY="sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
+        const sbc = supabase.createClient(SB_URL, SB_KEY);
+        const URLP = new URLSearchParams(location.search);
+        const G_CLS = URLP.get('cls') || 'g5';
+        const G_W = Math.max(1, parseInt(URLP.get('w') || '1') || 1);
+        function mkShip(i, name, gid, pts){
+            return { id:i, gid:String(gid), name:name, color:SHIP_COLORS[i%SHIP_COLORS.length][0], hex:SHIP_COLORS[i%SHIP_COLORS.length][1],
+                health:(pts!==undefined?pts:20), energy:0, isDead:false, mesh:null, labelEl:null, gridX:0, gridY:0,
+                shield:false, shieldMesh:null, halfMove:false, autoRepeat:false, trajectory:false, mines:false, bigCannon:false };
+        }
+        async function loadGroups(){
+            let defs=[];
+            const pts={};
+            try{
+                const r1 = await sbc.from('marks').select('*').eq('class_key','grpdef:'+G_CLS).eq('week',0);
+                if(!r1.error && r1.data && r1.data.length){ try{ defs=JSON.parse(r1.data[0].value); }catch(e){} }
+                const r2 = await sbc.from('marks').select('*').like('class_key','grp:'+G_CLS+':%').eq('week',G_W).eq('criterion_idx',0);
+                if(!r2.error && r2.data) r2.data.forEach(r=>{ const gid=r.class_key.split(':')[2]; const v=parseFloat(r.value); pts[gid]=isNaN(v)?20:v; });
+            }catch(e){}
+            if(!defs.length) defs=[1,2,3,4].map(i=>({id:i,name:'المجموعة '+i}));
+            shipsData = defs.slice(0,8).map((d,i)=>mkShip(i, d.name, d.id, pts[String(d.id)]));
+            shipsData.forEach(ship=>{
+                const m = createShipMesh(ship.color); scene.add(m); ship.mesh = m;
+                const label = document.createElement('div'); label.className = 'ship-label';
+                document.getElementById('labels-container').appendChild(label); ship.labelEl = label;
+            });
+            const sb = document.getElementById('start-btn');
+            sb.disabled = false; sb.textContent = 'ابدأ اللعبة 🚀';
+            const note = document.getElementById('setup-week-note');
+            if(note) note.textContent = '⚓ مرتبطة بنقاط مجموعات ' + weekName(G_W) + ' — أي زيادة أو نقصان في اللعبة يُحفظ فوراً في كشف المجموعات';
+        }
+        function weekName(w){ return 'الأسبوع ' + w; }
+        async function syncShip(ship){
+            if(!ship || ship.gid===undefined) return;
+            ship._synced = ship.health;
+            try{
+                await sbc.from('marks').upsert({class_key:'grp:'+G_CLS+':'+ship.gid, week:G_W, student_idx:0, criterion_idx:0,
+                    value:String(ship.health), updated_at:new Date().toISOString()});
+            }catch(e){}
+        }
+
+        let currentPlayerIndex = 0, currentQuestion = null;
+        let gameState = 'SETUP';
+        let aimYaw = 0, aimPitch = 10, aimPower = 50;
+        let savedYaw = 0, savedPitch = 10, savedPower = 50;
+        let currentProjectileDamage = 5, currentProjectileBig = false;
+
+        // ============================================================
+        //  THREE.JS
+        // ============================================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x7EC8E3);
+        scene.fog = new THREE.FogExp2(0x7EC8E3, 0.00013);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 18000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight.position.set(200, 600, 300);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.set(2048, 2048);
+        dirLight.shadow.camera.near = 1; dirLight.shadow.camera.far = 7000;
+        dirLight.shadow.camera.left = -2400; dirLight.shadow.camera.right = 2400;
+        dirLight.shadow.camera.top = 2400; dirLight.shadow.camera.bottom = -2400;
+        scene.add(dirLight);
+
+        // Ocean
+        const waterGeo = new THREE.PlaneGeometry(18000, 18000, 55, 55);
+        const waterMat = new THREE.MeshPhongMaterial({ color: 0x006b94, flatShading: true, transparent: true, opacity: .87, shininess: 90 });
+        const ocean = new THREE.Mesh(waterGeo, waterMat);
+        ocean.rotation.x = -Math.PI / 2; ocean.receiveShadow = true;
+        scene.add(ocean);
+        const ov = ocean.geometry.attributes.position.array;
+        const waves = [];
+        for (let i = 0; i < ov.length; i += 3)waves.push({ z: ov[i + 2], ang: Math.random() * Math.PI * 2, amp: 2 + Math.random() * 3.5, spd: .01 + Math.random() * .015 });
+
+        // Grid
+        const gridH = new THREE.GridHelper(GRID_SIZE * CELL_SIZE, GRID_SIZE, 0x4466BB, 0x2244AA);
+        gridH.material.opacity = .07; gridH.material.transparent = true;
+        gridH.position.y = 0.5; scene.add(gridH);
+
+        // Trajectory objects
+        let trajectoryLine = null, trajectoryMarker = null;
+
+        // ============================================================
+        //  HELPERS
+        // ============================================================
+        function gridToWorld(gx, gy) {
+            return new THREE.Vector3(MAP_OFFSET + gx * CELL_SIZE + CELL_SIZE / 2, 0, MAP_OFFSET + gy * CELL_SIZE + CELL_SIZE / 2);
+        }
+        function worldToGrid(x, z) {
+            return { gx: Math.floor((x - MAP_OFFSET) / CELL_SIZE), gy: Math.floor((z - MAP_OFFSET) / CELL_SIZE) };
+        }
+        function isInGrid(gx, gy) { return gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE; }
+        function shuffleArray(a) { let ci = a.length, ri; while (ci) { ri = Math.floor(Math.random() * ci); ci--;[a[ci], a[ri]] = [a[ri], a[ci]]; } return a; }
+        function parseQuestions(t) {
+            const ln = t.split('\n').map(l => l.trim()).filter(l => l.length > 0), p = [];
+            for (let i = 0; i < ln.length; i += 4)if (ln[i + 1] && ln[i + 2] && ln[i + 3]) p.push({ q: ln[i], correct: ln[i + 1], options: [ln[i + 1], ln[i + 2], ln[i + 3]] });
+            return p;
+        }
+
+        // ============================================================
+        //  TERRAIN
+        // ============================================================
+        function generateTerrain() {
+            terrainGrid = Array.from({ length: GRID_SIZE }, () => new Array(GRID_SIZE).fill(0));
+            const targetLand = Math.floor(GRID_SIZE * GRID_SIZE * 0.25);
+            const targetMtn = Math.floor(targetLand * 0.25);
+            let landCount = 0;
+
+            function countCross(x, y) {
+                let c = 0;
+                if (x > 0 && terrainGrid[x - 1][y]) c++;
+                if (x < GRID_SIZE - 1 && terrainGrid[x + 1][y]) c++;
+                if (y > 0 && terrainGrid[x][y - 1]) c++;
+                if (y < GRID_SIZE - 1 && terrainGrid[x][y + 1]) c++;
+                return c;
+            }
+            function count8(x, y) {
+                let c = 0;
+                for (let dx = -1; dx <= 1; dx++)for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && terrainGrid[nx][ny]) c++;
+                }
+                return c;
+            }
+            function isValid(cx, cy) {
+                terrainGrid[cx][cy] = 1;
+                let valid = true;
+                for (let x = Math.max(0, cx - 2); x <= Math.min(GRID_SIZE - 1, cx + 2); x++) {
+                    for (let y = Math.max(0, cy - 2); y <= Math.min(GRID_SIZE - 1, cy + 2); y++) {
+                        if (countCross(x, y) === 4) valid = false; // No square can be enclosed by 4 lands
+                        if (terrainGrid[x][y] && count8(x, y) > 5) valid = false; // No land can have > 5 land neighbors
+                    }
+                }
+                terrainGrid[cx][cy] = 0;
+                return valid;
+            }
+
+            let candidates = [];
+            function addLand(x, y) {
+                terrainGrid[x][y] = 1; landCount++;
+                for (let dx = -1; dx <= 1; dx++)for (let dy = -1; dy <= 1; dy++) {
+                    if (Math.abs(dx) + Math.abs(dy) === 1) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 2 && nx < GRID_SIZE - 2 && ny >= 2 && ny < GRID_SIZE - 2 && !terrainGrid[nx][ny]) candidates.push({ x: nx, y: ny });
+                    }
+                }
+            }
+
+            let attempts = 0;
+            while (landCount < targetLand && attempts < 100000) {
+                attempts++;
+                if (candidates.length > 0 && Math.random() < 0.85) {
+                    let idx = Math.floor(Math.random() * candidates.length);
+                    let cell = candidates[idx];
+                    candidates.splice(idx, 1);
+                    if (!terrainGrid[cell.x][cell.y] && isValid(cell.x, cell.y)) addLand(cell.x, cell.y);
+                } else {
+                    const rx = 2 + Math.floor(Math.random() * (GRID_SIZE - 4));
+                    const ry = 2 + Math.floor(Math.random() * (GRID_SIZE - 4));
+                    if (!terrainGrid[rx][ry] && isValid(rx, ry)) addLand(rx, ry);
+                }
+            }
+
+            let landCells = [];
+            for (let x = 0; x < GRID_SIZE; x++)for (let y = 0; y < GRID_SIZE; y++)if (terrainGrid[x][y] === 1) landCells.push({ x, y });
+            landCells = shuffleArray(landCells);
+            for (let i = 0; i < targetMtn && i < landCells.length; i++) {
+                terrainGrid[landCells[i].x][landCells[i].y] = 2;
+            }
+        }
+
+        // Store terrain heights for collision
+        const terrainHeights = {}; // key "gx,gy" -> max height
+
+        function renderTerrain() {
+            const hw = CELL_SIZE * .91;
+            for (let gx = 0; gx < GRID_SIZE; gx++)for (let gy = 0; gy < GRID_SIZE; gy++) {
+                if (!terrainGrid[gx][gy]) continue;
+                const wp = gridToWorld(gx, gy), iH = 10;
+                // Island base
+                const ig = new THREE.BoxGeometry(hw, iH, hw);
+                const ip = ig.attributes.position;
+                for (let vi = 0; vi < ip.count; vi++)if (ip.getY(vi) > 0) { ip.setX(vi, ip.getX(vi) + (Math.random() - .5) * 7); ip.setZ(vi, ip.getZ(vi) + (Math.random() - .5) * 7); }
+                ig.computeVertexNormals();
+                const isl = new THREE.Mesh(ig, new THREE.MeshPhongMaterial({ color: 0xD4A455, flatShading: true }));
+                isl.position.set(wp.x, iH / 2, wp.z); isl.castShadow = true; scene.add(isl);
+                let maxH = iH * 2;
+
+                if (terrainGrid[gx][gy] === 2) {
+                    const mH = 65 + Math.random() * 80, mR = CELL_SIZE * .37;
+                    const mtn = new THREE.Mesh(new THREE.ConeGeometry(mR, mH, 7), new THREE.MeshPhongMaterial({ color: 0x787888, flatShading: true }));
+                    mtn.position.set(wp.x, iH + mH / 2, wp.z); mtn.castShadow = true; scene.add(mtn);
+                    const sh = mH * .22;
+                    const snow = new THREE.Mesh(new THREE.ConeGeometry(mR * .24, sh, 7), new THREE.MeshPhongMaterial({ color: 0xEEEEFF }));
+                    snow.position.set(wp.x, iH + mH - sh * .38, wp.z); scene.add(snow);
+                    for (let r = 0; r < 3; r++) { const rs = 3 + Math.random() * 7, rk = new THREE.Mesh(new THREE.DodecahedronGeometry(rs, 0), new THREE.MeshPhongMaterial({ color: 0x665566, flatShading: true })); const a = Math.random() * Math.PI * 2, d = mR * .45 + Math.random() * mR * .25; rk.position.set(wp.x + Math.cos(a) * d, iH + rs * .5, wp.z + Math.sin(a) * d); scene.add(rk); }
+                    maxH = iH + mH + sh;
+                } else {
+                    const nd = 1 + Math.floor(Math.random() * 3);
+                    for (let d = 0; d < nd; d++) {
+                        const ox = (Math.random() - .5) * hw * .5, oz = (Math.random() - .5) * hw * .5;
+                        if (Math.random() > .3) {
+                            const th = 16 + Math.random() * 18;
+                            const tr = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 2.1, th, 6), new THREE.MeshPhongMaterial({ color: 0x7B5830 }));
+                            tr.position.set(wp.x + ox, iH + th / 2, wp.z + oz); tr.rotation.z = (Math.random() - .5) * .22; tr.castShadow = true; scene.add(tr);
+                            const lf = new THREE.Mesh(new THREE.ConeGeometry(13, 9, 6), new THREE.MeshPhongMaterial({ color: 0x2D7D32, flatShading: true }));
+                            lf.position.set(wp.x + ox, iH + th + 4, wp.z + oz); scene.add(lf);
+                            maxH = Math.max(maxH, iH + th + 8);
+                        } else {
+                            const rs = 3 + Math.random() * 5;
+                            const rk = new THREE.Mesh(new THREE.DodecahedronGeometry(rs, 0), new THREE.MeshPhongMaterial({ color: 0x888888, flatShading: true }));
+                            rk.position.set(wp.x + ox, iH, wp.z + oz); scene.add(rk);
+                        }
+                    }
+                }
+                terrainHeights[`${gx},${gy}`] = maxH + 5;
+            }
+        }
+
+        // ============================================================
+        //  SHIP MESH
+        // ============================================================
+        function createShipMesh(colorHex) {
+            const w = new THREE.Group(), ig = new THREE.Group();
+            const hg = new THREE.BoxGeometry(22, 12, 45);
+            const hp = hg.attributes.position;
+            for (let i = 0; i < hp.count; i++) { if (hp.getZ(i) > 10) { hp.setX(i, hp.getX(i) * .4); hp.setY(i, hp.getY(i) * 1.2); } else if (hp.getZ(i) < -10) hp.setX(i, hp.getX(i) * .8); }
+            hg.computeVertexNormals();
+            const hull = new THREE.Mesh(hg, new THREE.MeshPhongMaterial({ color: 0x4a3728 }));
+            hull.position.y = 2; hull.castShadow = true; ig.add(hull);
+            const rim = new THREE.Mesh(new THREE.BoxGeometry(23, 2, 46), new THREE.MeshPhongMaterial({ color: colorHex }));
+            rim.position.y = 8; ig.add(rim);
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 35, 8), new THREE.MeshPhongMaterial({ color: 0x3d2b1f }));
+            mast.position.set(0, 20, -5); mast.castShadow = true; ig.add(mast);
+            const sail = new THREE.Mesh(new THREE.BoxGeometry(.5, 20, 18), new THREE.MeshPhongMaterial({ color: colorHex, side: THREE.DoubleSide }));
+            sail.position.set(0, 22, -14); ig.add(sail);
+            const cg = new THREE.Group();
+            const cb = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 8), new THREE.MeshPhongMaterial({ color: 0x5c4033 }));
+            cb.position.y = 2; cg.add(cb);
+            const bg = new THREE.CylinderGeometry(1.5, 2.5, 16, 12); bg.translate(0, 8, 0);
+            const barrel = new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: .8, roughness: .2 }));
+            barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 4.5, -2);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(2, .4, 8, 12), barrel.material);
+            ring.position.set(0, 10, 0); barrel.add(ring);
+            cg.add(barrel); cg.position.set(0, 8, 10); ig.add(cg);
+            w.add(ig);
+            w.userData.innerGroup = ig; w.userData.cannonBarrel = barrel; w.userData.cannonGroup = cg;
+            return w;
+        }
+
+        // ============================================================
+        //  CHEST MESH
+        // ============================================================
+        function createChestMesh() {
+            const g = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(22, 14, 18), new THREE.MeshPhongMaterial({ color: 0x5C3317 }));
+            body.position.y = 7; g.add(body);
+            const lid = new THREE.Mesh(new THREE.BoxGeometry(22, 7, 18), new THREE.MeshPhongMaterial({ color: 0x7B4423 }));
+            lid.position.y = 17.5; g.add(lid);
+            const goldMat = new THREE.MeshPhongMaterial({ color: 0xFFD700, shininess: 200 });
+            const band = new THREE.Mesh(new THREE.BoxGeometry(24, 2.5, 3), goldMat);
+            band.position.set(0, 7, 0); g.add(band);
+            const band2 = band.clone(); band2.position.set(0, 13, 0); g.add(band2);
+            const lock = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 3), goldMat);
+            lock.position.set(0, 12, 10); g.add(lock);
+            const glow = new THREE.PointLight(0xFFD700, .7, 65); glow.position.y = 22; g.add(glow);
+            g.userData.glow = glow;
+            return g;
+        }
+
+        // ============================================================
+        //  MINE MESH
+        // ============================================================
+        function createMineMesh() {
+            const g = new THREE.Group();
+            const sph = new THREE.Mesh(new THREE.SphereGeometry(11, 8, 8), new THREE.MeshPhongMaterial({ color: 0x222222 }));
+            g.add(sph);
+            const sm = new THREE.MeshPhongMaterial({ color: 0xCC2200 });
+            for (let i = 0; i < 8; i++) {
+                const sp = new THREE.Mesh(new THREE.ConeGeometry(1.8, 7, 4), sm);
+                const a = (i / 8) * Math.PI * 2;
+                sp.position.set(Math.cos(a) * 11, Math.sin(a) * 4, Math.sin(a) * 11);
+                sp.rotation.z = -Math.PI / 2 + a; g.add(sp);
+            }
+            const wl = new THREE.PointLight(0xFF2200, .5, 50); wl.position.y = 5; g.add(wl);
+            return g;
+        }
+
+        // ============================================================
+        //  INIT
+        // ============================================================
+        generateTerrain(); renderTerrain();
+
+        { const sb=document.getElementById('start-btn'); sb.disabled=true; sb.textContent='جارٍ تحميل المجموعات…'; }
+        loadGroups();
+
+        function placeShipsRandomly() {
+            const taken = new Set();
+            shipsData.forEach(ship => {
+                ship.energy = 0; ship.isDead = false;
+                ship.shield = false; ship.shieldMesh && ship.mesh.remove(ship.shieldMesh); ship.shieldMesh = null;
+                ship.halfMove = ship.autoRepeat = ship.trajectory = ship.mineMode = ship.bigCannon = false;
+                ship.mesh.userData.innerGroup.position.set(0, 0, 0);
+                ship.mesh.userData.innerGroup.rotation.set(0, 0, 0);
+                let gx, gy, t = 0;
+                do { gx = 1 + Math.floor(Math.random() * (GRID_SIZE - 2)); gy = 1 + Math.floor(Math.random() * (GRID_SIZE - 2)); t++; }
+                while ((terrainGrid[gx][gy] !== 0 || taken.has(`${gx},${gy}`)) && t < 400);
+                ship.gridX = gx; ship.gridY = gy; taken.add(`${gx},${gy}`);
+                const wp = gridToWorld(gx, gy); ship.mesh.position.set(wp.x, 0, wp.z);
+                ship.mesh.rotation.y = Math.random() * Math.PI * 2;
+            });
+        }
+
+        function initChests() {
+            chests.forEach(c => scene.remove(c.mesh)); chests.length = 0;
+            for (let i = 0; i < NUM_CHESTS; i++)spawnChest();
+        }
+
+        function spawnChest() {
+            let gx, gy, t = 0;
+            do { gx = 1 + Math.floor(Math.random() * (GRID_SIZE - 2)); gy = 1 + Math.floor(Math.random() * (GRID_SIZE - 2)); t++; }
+            while ((terrainGrid[gx][gy] !== 0 || chests.some(c => c.gx === gx && c.gy === gy) || shipsData.some(s => !s.isDead && s.gridX === gx && s.gridY === gy)) && t < 400);
+            const wp = gridToWorld(gx, gy);
+            const mesh = createChestMesh(); mesh.position.set(wp.x, 1, wp.z);
+            scene.add(mesh); chests.push({ gx, gy, mesh });
+        }
+
+        // ============================================================
+        //  CAMERA
+        // ============================================================
+        const overviewPos = new THREE.Vector3(0, 2200, 1750);
+        camera.position.copy(overviewPos); camera.lookAt(0, 0, 0);
+
+        // ============================================================
+        //  PROJECTILE
+        // ============================================================
+        let activeProjectiles = [];
+        let activeParticles = [];
+
+        // ============================================================
+        //  UI REFS
+        // ============================================================
+        const ui = {
+            setup: document.getElementById('setup-screen'),
+            trivia: document.getElementById('trivia-screen'),
+            shooting: document.getElementById('shooting-screen'),
+            movement: document.getElementById('movement-screen'),
+            alert: document.getElementById('alert-screen'),
+            hud: document.getElementById('hud'),
+            centerContainer: document.getElementById('center-ui-container'),
+            qText: document.getElementById('question-text'),
+            optionsBox: document.getElementById('options-container'),
+            turnTitle: document.getElementById('turn-team-name'),
+            turnIndicator: document.getElementById('turn-indicator'),
+            crosshair: document.getElementById('crosshair'),
+            labels: document.getElementById('labels-container')
+        };
+
+        // ============================================================
+        //  3D CANNONBALL DROP (HUD minus button)
+        // ============================================================
+        function triggerShipCannonballDrop(ship) {
+            return new Promise(resolve => {
+                const prev = gameState; gameState = 'CANNONBALL_ANIM';
+                ui.centerContainer.classList.add('hidden');
+                const sp = ship.mesh.position.clone();
+                animateCamera(new THREE.Vector3(sp.x + 110, 160, sp.z + 110), sp);
+                const ball = new THREE.Mesh(new THREE.SphereGeometry(3.5, 16, 16), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: .9, roughness: .3 }));
+                ball.position.set(sp.x, 420, sp.z); scene.add(ball);
+                const tl = new THREE.PointLight(0xff8800, 4, 130); tl.position.copy(ball.position); scene.add(tl);
+                const t0 = performance.now();
+                function drop() {
+                    const t = Math.min((performance.now() - t0) / 900, 1), e = t * t;
+                    ball.position.y = 420 + (10 - 420) * e; tl.position.copy(ball.position);
+                    if (t < 1) { requestAnimationFrame(drop); return; }
+                    scene.remove(tl); scene.remove(ball); createExplosion(ball.position.clone());
+                    const fl = new THREE.PointLight(0xff4400, 10, 260); fl.position.copy(ball.position); scene.add(fl);
+                    setTimeout(() => scene.remove(fl), 300);
+                    setTimeout(() => { gameState = prev; resolve(); }, 1300);
+                }
+                requestAnimationFrame(drop);
+            });
+        }
+
+        // ============================================================
+        //  HUD GLOBALS
+        // ============================================================
+        window.changeHealth = function (shipId, amount) {
+            const ship = shipsData.find(s => s.id === shipId);
+            if (!ship || ship.isDead || gameState === 'CANNONBALL_ANIM') return;
+            if (amount < 0) {
+                // Capture state
+                const preGS = gameState;
+                const cw = new THREE.Vector3(); camera.getWorldDirection(cw);
+                const oldCamPos = camera.position.clone();
+                const oldCamLook = camera.position.clone().add(cw.multiplyScalar(200));
+
+                const wasShooting = !ui.shooting.classList.contains('hidden');
+                const aUi = document.getElementById('aiming-ui'), pUi = document.getElementById('power-ui');
+                const wasAiming = !aUi.classList.contains('hidden');
+                const wasPower = !pUi.classList.contains('hidden');
+                const wasCrosshair = ui.crosshair.style.display !== 'none';
+                const wasMovement = !ui.movement.classList.contains('hidden');
+
+                ui.shooting.classList.add('hidden');
+                ui.movement.classList.add('hidden');
+                ui.crosshair.style.display = 'none';
+
+                triggerShipCannonballDrop(ship).then(() => {
+                    ship.health = Math.max(0, ship.health + amount);
+                    if (ship.health <= 0) destroyShip(ship);
+                    updateHUD(); updateFloatingLabels();
+
+                    // RESTORE
+                    if (preGS === 'TRIVIA') {
+                        ui.centerContainer.classList.remove('hidden');
+                        animateCamera(overviewPos, new THREE.Vector3(0, 0, 0));
+                    } else if (preGS === 'MOVING' || preGS === 'MOVE_ANIMATING') {
+                        if (wasMovement) ui.movement.classList.remove('hidden');
+                        const cp = shipsData[currentPlayerIndex];
+                        if (cp) { const sp = cp.mesh.position.clone(); animateCamera(new THREE.Vector3(sp.x + 80, 320, sp.z + 180), sp); }
+                        else animateCamera(oldCamPos, oldCamLook);
+                    } else if (preGS === 'AIMING' || preGS === 'POWER') {
+                        if (wasShooting) ui.shooting.classList.remove('hidden');
+                        if (wasAiming) aUi.classList.remove('hidden');
+                        if (wasPower) pUi.classList.remove('hidden');
+                        if (wasCrosshair) ui.crosshair.style.display = 'block';
+                        isAnimCam = false; // stops manual lerp
+                        updateAimingCamera();
+                    } else if (preGS === 'SETUP' || preGS === 'GAMEOVER') {
+                        animateCamera(overviewPos, new THREE.Vector3(0, 0, 0));
+                    } else {
+                        animateCamera(oldCamPos, oldCamLook);
+                    }
+                });
+            } else { ship.health += amount; updateHUD(); updateFloatingLabels(); }
+        };
+        window.copyScores = function () {
+            const txt = shipsData.map(s => s.health).join('\n');
+            navigator.clipboard.writeText(txt).then(ok => { const b = document.getElementById('copy-scores-btn'), o = b.textContent; b.textContent = '✅ تم!'; setTimeout(() => b.textContent = o, 1800); }).catch(() => { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); });
+        };
+        window.replayPreviousQuestions = function () { if (!usedQuestions.length) return; questions = [...usedQuestions]; usedQuestions = []; startTriviaPhase(); };
+        window.forceChangeTurn = function (shipId) {
+            if (gameState === 'ANIMATING' || gameState === 'CANNONBALL_ANIM') return;
+            const s = shipsData.find(s => s.id === shipId);
+            if (s && !s.isDead) { hideAlert(); currentPlayerIndex = shipId; startTriviaPhase(); }
+        };
+
+        // ============================================================
+        //  ADD QUESTIONS MODAL
+        // ============================================================
+        function openAddQ() { document.getElementById('add-q-modal').classList.add('show'); }
+        function closeAddQ() { document.getElementById('add-q-modal').classList.remove('show'); }
+        window.openAddQ = openAddQ; window.closeAddQ = closeAddQ;
+        window.addNewQuestions = function () {
+            const inp = document.getElementById('add-q-input');
+            const newQ = parseQuestions(inp.value);
+            if (newQ.length > 0) { questions = [...questions, ...newQ]; inp.value = ''; closeAddQ(); showAlert('✅ تمت الإضافة', `تم إضافة ${newQ.length} سؤال`, 'text-green-400', 'border-green-500'); setTimeout(hideAlert, 2000); }
+        };
+
+        // ============================================================
+        //  MANUAL PU MODAL
+        // ============================================================
+        let manualPUShipId = -1;
+        window.openManualPU = function (shipId) {
+            manualPUShipId = shipId;
+            const s = shipsData.find(x => x.id === shipId); if (!s) return;
+            document.getElementById('manual-pu-ship-name').innerText = s.name;
+            document.getElementById('manual-pu-modal').classList.remove('hidden');
+            const grid = document.getElementById('pu-grid'); grid.innerHTML = '';
+            PU_KEYS.forEach(k => {
+                const p = PU_INFO[k]; const b = document.createElement('button');
+                b.className = 'w-28 p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold border-2 border-slate-600 text-sm flex flex-col items-center transition-colors';
+                b.innerHTML = `<span class="text-3xl mb-1">${p.icon}</span><span>${p.name}</span>`;
+                b.onclick = () => { givePU(shipId, k); }; grid.appendChild(b);
+            });
+            const hb = document.createElement('button');
+            hb.className = 'w-28 p-2 bg-slate-700 hover:bg-red-600 text-white rounded-xl font-bold border-2 border-slate-600 text-sm flex flex-col items-center transition-colors';
+            hb.innerHTML = `<span class="text-3xl mb-1">❤️</span><span>صحة +10</span>`;
+            hb.onclick = () => {
+                const s = shipsData.find(x => x.id === shipId);
+                if (s) { s.health = Math.min(99, s.health + 10); updateHUD(); updateFloatingLabels(); playSound('chest'); }
+                document.getElementById('manual-pu-modal').classList.add('hidden');
+            }; grid.appendChild(hb);
+        };
+        window.givePU = function (shipId, k) {
+            const s = shipsData.find(x => x.id === shipId); if (!s) return;
+            if (k === 'shield') {
+                s.shield = true; if (s.shieldMesh) s.mesh.remove(s.shieldMesh);
+                const sg = new THREE.SphereGeometry(38, 16, 16), sm = new THREE.MeshBasicMaterial({ color: 0x00AAFF, transparent: true, opacity: .22, side: THREE.DoubleSide });
+                s.shieldMesh = new THREE.Mesh(sg, sm); s.mesh.add(s.shieldMesh);
+            } else { s[k] = true; }
+            updateHUD(); updateFloatingLabels(); playSound('chest');
+            showAlert(`🎁 هدية المعلم!`, `تم منح [${PU_INFO[k].name}] إلى ${s.name}!`, 'text-yellow-300', 'border-yellow-400');
+            setTimeout(hideAlert, 2500);
+            document.getElementById('manual-pu-modal').classList.add('hidden');
+        };
+
+        // ============================================================
+        //  POWER-UP SYSTEM
+        // ============================================================
+        function applyPowerUp(ship) {
+            // 20% chance for health10 (instant), 70% for stored PU, 10% for health10 again = simpler: random
+            playSound('chest');
+            const roll = Math.random();
+            if (roll < 0.14) {
+                // Instant health
+                ship.health = Math.min(ship.health + 10, 99);
+                updateHUD(); updateFloatingLabels();
+                showAlert(`${ship.name} صندوق كنز! ❤️`, '+10 نقاط صحة فورية!', 'text-red-400', 'border-red-500');
+                setTimeout(hideAlert, 2200);
+                return;
+            }
+            const type = PU_KEYS[Math.floor(Math.random() * PU_KEYS.length)];
+            const pu = PU_INFO[type];
+
+            if (type === 'shield') {
+                ship.shield = true;
+                if (ship.shieldMesh) { ship.mesh.remove(ship.shieldMesh); }
+                const sg = new THREE.SphereGeometry(38, 16, 16);
+                const sm = new THREE.MeshBasicMaterial({ color: 0x00AAFF, transparent: true, opacity: .22, side: THREE.DoubleSide });
+                ship.shieldMesh = new THREE.Mesh(sg, sm);
+                ship.mesh.add(ship.shieldMesh);
+            } else {
+                ship[type] = true;
+            }
+            updateHUD(); updateFloatingLabels();
+            showAlert(`${ship.name} صندوق كنز! ${pu.icon}`, pu.desc, 'text-yellow-300', 'border-yellow-500');
+            setTimeout(hideAlert, 2500);
+        }
+
+        function clearShield(ship) {
+            ship.shield = false;
+            if (ship.shieldMesh) { ship.mesh.remove(ship.shieldMesh); ship.shieldMesh = null; }
+        }
+
+        // ============================================================
+        //  CHEST / MINE PICKUP
+        // ============================================================
+        function checkChestPickup(ship) {
+            for (let i = chests.length - 1; i >= 0; i--) {
+                if (chests[i].gx === ship.gridX && chests[i].gy === ship.gridY) {
+                    scene.remove(chests[i].mesh); chests.splice(i, 1);
+                    applyPowerUp(ship);
+                    setTimeout(spawnChest, 1000); // respawn elsewhere after 1s
+                    break;
+                }
+            }
+        }
+        function checkMineCollision(ship) {
+            for (let i = seaMines.length - 1; i >= 0; i--) {
+                if (seaMines[i].gx === ship.gridX && seaMines[i].gy === ship.gridY) {
+                    createExplosion(seaMines[i].mesh.position.clone());
+                    scene.remove(seaMines[i].mesh); seaMines.splice(i, 1);
+                    if (ship.shield) { clearShield(ship); showAlert('🛡️ درع!', `درع ${ship.name} منع اللغم!`, 'text-blue-300', 'border-blue-500'); setTimeout(hideAlert, 2000); }
+                    else { ship.health = Math.max(0, ship.health - 8); if (ship.health <= 0) destroyShip(ship); updateHUD(); updateFloatingLabels(); showAlert('💣 لغم!', `${ship.name} خسرت 8 نقاط صحة!`, 'text-red-400', 'border-red-500'); setTimeout(hideAlert, 2000); }
+                    break;
+                }
+            }
+        }
+
+        // ============================================================
+        //  SHIP DESTRUCTION
+        // ============================================================
+        function destroyShip(ship) {
+            ship.isDead = true;
+            ship.mesh.userData.innerGroup.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(0x1a1a1a); } });
+            clearShield(ship);
+            ship.labelEl.style.display = 'none';
+            checkWinCondition();
+        }
+
+        // ============================================================
+        //  HUD UPDATE
+        // ============================================================
+        function getActivePU(ship) {
+            for (const k of PU_KEYS) if (ship[k]) return k;
+            if (ship.shield) return 'shield';
+            return null;
+        }
+
+        function energyBarHTML(energy, maxDiv = ENERGY_BAR_MAX) {
+            const pct = Math.min(100, (energy / maxDiv) * 100);
+            let divs = '';
+            const maxD = Math.min(maxDiv, Math.ceil(energy) + 1);
+            for (let i = 1; i < maxD; i++)divs += `<div class="energy-divider" style="left:${(i / maxDiv) * 100}%"></div>`;
+            return `<div class="energy-bar-wrap"><div class="energy-bar-fill" style="width:${pct}%"></div>${divs}</div>`;
+        }
+
+        function updateHUD() {
+            ui.hud.innerHTML = '';
+            shipsData.forEach(ship => {
+                const div = document.createElement('div');
+                div.id = `hud-ship-${ship.id}`;
+                div.className = `ship-hud bg-slate-800/90 border-b-4 px-2 py-1 rounded text-white font-bold flex flex-col items-center gap-0.5 shadow-lg backdrop-blur-sm ${ship.isDead ? 'dead-ship' : ''}`;
+                div.style.borderColor = ship.hex;
+                const bw = Math.min(100, (ship.health / 20) * 100);
+                const pu = getActivePU(ship);
+                const puBadge = pu ? `<span class="pu-badge">${PU_INFO[pu]?.icon || '🛡️'} ${PU_INFO[pu]?.name || 'درع'}</span>` : '';
+                const isCurrentTurn = gameState !== 'SETUP' && currentPlayerIndex === ship.id && !ship.isDead;
+                div.innerHTML = `
+      <div class="flex items-center gap-1 justify-center cursor-pointer hover:scale-105 transition-transform" style="${isCurrentTurn ? 'filter:drop-shadow(0 0 6px ' + ship.hex + ')' : ''}">
+        <span onclick="forceChangeTurn(${ship.id})" style="color:${ship.hex}" class="text-xs">🚢 ${ship.name}</span>
+        <button class="bg-blue-600 hover:bg-blue-500 border border-blue-400 text-white font-bold w-5 h-5 rounded flex items-center justify-center text-lg leading-none shadow transition-colors" onclick="event.stopPropagation();openManualPU(${ship.id})" title="منح تعزيز للمعلم">+</button>
+      </div>
+      <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden pointer-events-none">
+        <div class="h-full transition-all duration-500 ${ship.health >= 10 ? 'bg-green-500' : ship.health > 0 ? 'bg-orange-500' : 'bg-red-600'}" style="width:${bw}%"></div>
+      </div>
+      <div class="flex items-center gap-2 text-xs mt-0.5">
+        <span class="text-gray-300">❤️ ${ship.health}</span>
+        <span class="text-yellow-400 font-bold">⚡ ${Number.isInteger(ship.energy) ? ship.energy : ship.energy.toFixed(1)}</span>
+      </div>
+      ${puBadge ? `<div>${puBadge}</div>` : ''}
+      <div class="w-full pointer-events-none">${energyBarHTML(ship.energy)}</div>
+      <div class="flex items-center gap-1 mt-0.5">
+        <button class="bg-red-500 hover:bg-red-600 w-5 h-5 rounded text-white font-black text-xs leading-none" onclick="changeHealth(${ship.id},-5)">−</button>
+        <button class="bg-green-500 hover:bg-green-600 w-5 h-5 rounded text-white font-black text-xs leading-none" onclick="changeHealth(${ship.id},5)">+</button>
+      </div>`;
+                ui.hud.appendChild(div);
+            });
+            updateFloatingLabels();
+            // مزامنة الصحة (= نقاط الأسبوع) مع قاعدة البيانات عند تغيرها فقط
+            shipsData.forEach(s=>{ if(s._synced===undefined) s._synced=s.health; else if(s._synced!==s.health) syncShip(s); });
+        }
+
+        function updateFloatingLabels() {
+            shipsData.forEach(ship => {
+                if (!ship.labelEl) return;
+                if (ship.isDead) { ship.labelEl.style.display = 'none'; return; }
+                const pu = getActivePU(ship);
+                ship.labelEl.innerHTML = `
+      <div style="color:${ship.hex};text-shadow:2px 2px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;">${ship.name}${pu ? ` ${PU_INFO[pu]?.icon || '🛡️'}` : ''}${ship.shield && !pu ? ' 🛡️' : ''}</div>
+      <div class="inline-flex items-center gap-2 bg-black/75 px-2 py-0.5 rounded-full border border-white/20 mt-0.5 text-xs shadow-md">
+        <span class="text-white">❤️ ${ship.health}</span>
+        <span class="text-yellow-400">⚡ ${Number.isInteger(ship.energy) ? ship.energy : ship.energy.toFixed(1)}</span>
+      </div>`;
+            });
+        }
+
+        // ============================================================
+        //  ALERT
+        // ============================================================
+        function showAlert(title, desc, cc = "text-white", bc = "border-yellow-500") {
+            document.getElementById('alert-title').innerText = title;
+            document.getElementById('alert-title').className = `text-3xl font-bold mb-4 drop-shadow-md ${cc}`;
+            document.getElementById('alert-desc').innerText = desc;
+            ui.alert.className = `hidden absolute top-1/4 left-1/2 transform -translate-x-1/2 bg-slate-900/95 text-white px-8 py-6 rounded-2xl text-center border-2 z-50 fade-in shadow-2xl backdrop-blur-md w-[90%] max-w-md pointer-events-auto ${bc}`;
+            ui.alert.classList.remove('hidden');
+        }
+        function hideAlert() { ui.alert.classList.add('hidden'); }
+
+        // ============================================================
+        //  WIN CONDITION
+        // ============================================================
+        function checkWinCondition() {
+            const alive = shipsData.filter(s => !s.isDead);
+            if (alive.length <= 1) {
+                gameState = 'GAMEOVER';
+                ui.centerContainer.classList.add('hidden'); ui.shooting.classList.add('hidden'); ui.movement.classList.add('hidden');
+                ui.crosshair.style.display = 'none'; clearTrajectory();
+                if (alive.length === 1) showAlert("🏆 اللعبة انتهت!", `انتصرت ${alive[0].name}!`, "text-yellow-400", "border-yellow-400");
+                else showAlert("🌊 اللعبة انتهت!", "غرقت جميع السفن!", "text-gray-400", "border-gray-500");
+                animateCamera(overviewPos, new THREE.Vector3(0, 0, 0)); return true;
+            } return false;
+        }
+
+        // ============================================================
+        //  TURN MGMT
+        // ============================================================
+        function nextTurn() {
+            if (checkWinCondition()) return;
+            hideAlert(); clearTrajectory();
+            // Clear per-turn power-ups (halfMove, trajectory)
+            const cs = shipsData[currentPlayerIndex];
+            if (cs) { cs.halfMove = false; cs.trajectory = false; }
+            do { currentPlayerIndex = (currentPlayerIndex + 1) % shipsData.length; } while (shipsData[currentPlayerIndex].isDead);
+            startTriviaPhase();
+        }
+
+        function afterShotResolve() {
+            const cs = shipsData[currentPlayerIndex];
+            if (pendingAutoRepeat && cs && !cs.isDead && cs.energy >= 2) {
+                pendingAutoRepeat = false; cs.energy -= 2;
+                showAlert('🔄 تكرار إطلاق تلقائي!', 'إعادة الإطلاق بنفس الإعدادات...', 'text-yellow-300', 'border-yellow-400');
+                setTimeout(() => { hideAlert(); aimYaw = savedYaw; aimPitch = savedPitch; aimPower = savedPower; fireCannon(); }, 1500);
+                return;
+            }
+            pendingAutoRepeat = false;
+            // Stay in movement if energy remains
+            if (cs && !cs.isDead && cs.energy > 0) {
+                setTimeout(() => { hideAlert(); startMovementPhase(); }, 2000);
+            } else {
+                setTimeout(nextTurn, 2500);
+            }
+        }
+
+        // ============================================================
+        //  TRIVIA
+        // ============================================================
+        function updateReplayBtn() { const b = document.getElementById('replay-questions-btn'); if (b) b.disabled = usedQuestions.length === 0; }
+
+        function showTurnEnergyBar(ship) {
+            const wrap = document.getElementById('turn-energy-wrap');
+            const fill = document.getElementById('turn-energy-fill');
+            const num = document.getElementById('turn-energy-num');
+            const outer = document.getElementById('turn-energy-bar-outer');
+            if (ship.energy > 0) {
+                wrap.classList.remove('hidden');
+                num.textContent = Number.isInteger(ship.energy) ? ship.energy : ship.energy.toFixed(1);
+                fill.style.width = `${Math.min(100, (ship.energy / ENERGY_BAR_MAX) * 100)}%`;
+                // Dividers
+                outer.querySelectorAll('.energy-divider').forEach(d => d.remove());
+                const maxD = Math.min(ENERGY_BAR_MAX, Math.ceil(ship.energy) + 1);
+                for (let i = 1; i < maxD; i++) { const d = document.createElement('div'); d.className = 'energy-divider'; d.style.left = `${(i / ENERGY_BAR_MAX) * 100}%`; outer.appendChild(d); }
+            } else wrap.classList.add('hidden');
+        }
+
+        function showTeacherQ() {
+            ui.qText.innerText = 'سؤال من المعلم';
+            ui.qText.className = 'text-xl md:text-2xl mb-6 font-semibold text-purple-300 leading-relaxed';
+            ui.optionsBox.innerHTML = '';
+            const mk = (txt, col, isC) => { const b = document.createElement('button'); b.className = `bg-slate-700 hover:${col} text-white font-bold py-4 px-6 rounded-lg transition-all text-xl border-l-4 shadow-md text-right`; b.style.borderColor = isC ? '#22c55e' : '#ef4444'; b.innerText = txt; b.onclick = () => handleAnswer(isC); ui.optionsBox.appendChild(b); };
+            mk('✅ جواب صحيح', 'bg-green-600', true); mk('❌ جواب خاطئ', 'bg-red-600', false);
+            updateReplayBtn();
+        }
+
+        function startTriviaPhase() {
+            gameState = 'TRIVIA';
+            const ship = shipsData[currentPlayerIndex];
+            ui.centerContainer.classList.remove('hidden'); ui.trivia.classList.remove('hidden');
+            ui.shooting.classList.add('hidden'); ui.movement.classList.add('hidden'); ui.crosshair.style.display = 'none';
+            ui.trivia.style.borderColor = ship.hex;
+            ui.turnIndicator.style.backgroundColor = ship.hex;
+            ui.turnTitle.innerText = ship.name; ui.turnTitle.style.color = ship.hex;
+            ui.qText.className = 'text-xl md:text-2xl mb-6 font-semibold text-yellow-300 leading-relaxed';
+            showTurnEnergyBar(ship);
+            animateCamera(overviewPos, new THREE.Vector3(0, 0, 0));
+            if (questions.length === 0) { showTeacherQ(); return; }
+            const qi = Math.floor(Math.random() * questions.length);
+            currentQuestion = questions[qi]; questions.splice(qi, 1); usedQuestions.push(currentQuestion);
+            ui.qText.innerText = currentQuestion.q;
+            const opts = [...currentQuestion.options]; shuffleArray(opts);
+            ui.optionsBox.innerHTML = '';
+            opts.forEach(opt => {
+                const b = document.createElement('button');
+                b.className = "bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-6 rounded-lg transition-all text-lg border-l-4 shadow-md text-right";
+                b.style.borderColor = ship.hex; b.innerText = opt; b.onclick = () => handleAnswer(opt === currentQuestion.correct);
+                ui.optionsBox.appendChild(b);
+            });
+            updateReplayBtn();
+        }
+
+        // ============================================================
+        //  ANSWER HANDLING
+        // ============================================================
+        function handleAnswer(isCorrect) {
+            const ship = shipsData[currentPlayerIndex];
+            ui.trivia.classList.add('hidden'); ui.centerContainer.classList.add('hidden');
+            if (isCorrect) {
+                playSound('correct');
+                ship.health += 5; ship.energy += 5; updateHUD();
+                showAlert("إجابة صحيحة! 🎉", `+5 صحة ❤️   +5 طاقة ⚡`, "text-green-400", "border-green-500");
+                setTimeout(() => { hideAlert(); startMovementPhase(); }, 1800);
+            } else {
+                playSound('wrong');
+                showAlert("إجابة خاطئة! ❌", "الدور للمجموعة التالية.", "text-red-400", "border-red-500");
+                setTimeout(nextTurn, 2500);
+            }
+        }
+
+        // ============================================================
+        //  MOVEMENT PHASE
+        // ============================================================
+        function isValidMove(ngx, ngy, ship) {
+            if (!isInGrid(ngx, ngy)) return false;
+            if (terrainGrid[ngx][ngy] !== 0) return false;
+            if (shipsData.some(s => !s.isDead && s.id !== ship.id && s.gridX === ngx && s.gridY === ngy)) return false;
+            return true;
+        }
+
+        function updateMovePanel() {
+            const ship = shipsData[currentPlayerIndex];
+            const e = ship.energy;
+            const pu = getActivePU(ship);
+            document.getElementById('move-energy').textContent = Number.isInteger(e) ? e : e.toFixed(1);
+            document.getElementById('move-team-name').textContent = ship.name;
+            document.getElementById('move-panel').style.borderColor = ship.hex;
+            const badge = document.getElementById('move-pu-badge');
+            if (pu) { badge.textContent = `${PU_INFO[pu]?.icon || '🛡️'} ${PU_INFO[pu]?.name}`; badge.classList.remove('hidden'); }
+            else badge.classList.add('hidden');
+            // Energy fill
+            const fill = document.getElementById('move-energy-fill');
+            const bar = document.getElementById('move-energy-bar');
+            fill.style.width = `${Math.min(100, (e / ENERGY_BAR_MAX) * 100)}%`;
+            bar.querySelectorAll('.energy-divider').forEach(d => d.remove());
+            const maxD = Math.min(ENERGY_BAR_MAX, Math.ceil(e) + 1);
+            for (let i = 1; i < maxD; i++) { const d = document.createElement('div'); d.className = 'energy-divider'; d.style.left = `${(i / ENERGY_BAR_MAX) * 100}%`; bar.appendChild(d); }
+            // Buttons
+            const moveCost = ship.halfMove ? .5 : 1;
+            document.getElementById('btn-up').disabled = e < moveCost || !isValidMove(ship.gridX, ship.gridY - 1, ship);
+            document.getElementById('btn-down').disabled = e < moveCost || !isValidMove(ship.gridX, ship.gridY + 1, ship);
+            document.getElementById('btn-left').disabled = e < moveCost || !isValidMove(ship.gridX - 1, ship.gridY, ship);
+            document.getElementById('btn-right').disabled = e < moveCost || !isValidMove(ship.gridX + 1, ship.gridY, ship);
+            document.getElementById('btn-shoot').disabled = (ship.mines ? e < 2 : e < 2);
+        }
+
+        function startMovementPhase() {
+            gameState = 'MOVING';
+            const ship = shipsData[currentPlayerIndex];
+            ui.movement.classList.remove('hidden');
+            updateMovePanel();
+            const sp = ship.mesh.position.clone();
+            animateCamera(new THREE.Vector3(sp.x + 80, 320, sp.z + 180), sp);
+        }
+
+        window.attemptMove = function (dx, dy) {
+            if (gameState !== 'MOVING') return;
+            const ship = shipsData[currentPlayerIndex];
+            const moveCost = ship.halfMove ? .5 : 1;
+            if (ship.energy < moveCost) return;
+            const ngx = ship.gridX + dx, ngy = ship.gridY + dy;
+            if (!isValidMove(ngx, ngy, ship)) return;
+
+            ship.energy -= moveCost; ship.gridX = ngx; ship.gridY = ngy;
+            const twp = gridToWorld(ngx, ngy);
+            ship.mesh.lookAt(new THREE.Vector3(twp.x, 0, twp.z));
+            const startPos = ship.mesh.position.clone();
+            const t0 = performance.now();
+            playSound('move');
+            gameState = 'MOVE_ANIMATING';
+
+            function glide() {
+                const t = Math.min((performance.now() - t0) / 380, 1), e = t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                ship.mesh.position.x = startPos.x + (twp.x - startPos.x) * e;
+                ship.mesh.position.z = startPos.z + (twp.z - startPos.z) * e;
+                ship.mesh.position.y = Math.sin(t * Math.PI) * 6;
+                if (t < 1) { requestAnimationFrame(glide); return; }
+                ship.mesh.position.set(twp.x, 0, twp.z);
+                checkChestPickup(ship);
+                checkMineCollision(ship);
+                gameState = 'MOVING'; updateHUD(); updateFloatingLabels(); updateMovePanel();
+                const np = ship.mesh.position.clone();
+                animateCamera(new THREE.Vector3(np.x + 80, 320, np.z + 180), np);
+                // Auto-end if energy depleted
+                if (ship.energy <= 0) {
+                    ship.energy = 0;
+                    setTimeout(() => {
+                        ui.movement.classList.add('hidden');
+                        showAlert('⚡ نفدت الطاقة!', `${ship.name} استنفدت طاقتها.`, 'text-yellow-400', 'border-yellow-500');
+                        setTimeout(nextTurn, 1800);
+                    }, 300);
+                }
+            }
+            requestAnimationFrame(glide);
+        };
+
+        window.proceedToShooting = function () {
+            const ship = shipsData[currentPlayerIndex];
+            if (ship.energy < 2) return;
+            ship.energy -= 2; updateHUD(); ui.movement.classList.add('hidden'); startShootingPhase();
+        };
+
+        window.skipMovementTurn = function () {
+            if (gameState !== 'MOVING' && gameState !== 'MOVE_ANIMATING') return;
+            ui.movement.classList.add('hidden'); nextTurn();
+        };
+
+        // ============================================================
+        //  TRAJECTORY PREVIEW
+        // ============================================================
+        function clearTrajectory() {
+            if (trajectoryLine) { scene.remove(trajectoryLine); trajectoryLine = null; }
+            if (trajectoryMarker) { scene.remove(trajectoryMarker); trajectoryMarker = null; }
+        }
+
+        function updateTrajectoryPreview() {
+            const ship = shipsData[currentPlayerIndex];
+            if (!ship.trajectory) return;
+            clearTrajectory();
+
+            // Trajectory PU doubles effective range
+            const effectivePwr = ship.trajectory ? aimPower * 2 : aimPower;
+            const yr = (aimYaw * Math.PI) / 180, pr = (aimPitch * Math.PI) / 180;
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.mesh.quaternion).normalize();
+            const vd = fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yr);
+            const fd = vd.clone(); fd.y = Math.sin(pr); fd.normalize();
+            const vel = fd.clone().multiplyScalar(effectivePwr * .85);
+            const simPos = ship.mesh.position.clone(); simPos.y += 12; simPos.add(fd.clone().multiplyScalar(15));
+            const simVel = vel.clone();
+            const pts = [simPos.clone()];
+            const dt = .07;
+            for (let t = 0; t < 15; t += dt) {
+                simVel.y -= 22 * dt;
+                simPos.add(simVel.clone().multiplyScalar(dt * 1.2));
+                pts.push(simPos.clone());
+                const { gx, gy } = worldToGrid(simPos.x, simPos.z);
+                const tH = terrainHeights[`${gx},${gy}`] || 0;
+                if (simPos.y <= 0 || simPos.y <= tH) break;
+            }
+            if (pts.length > 1) {
+                const geo = new THREE.BufferGeometry().setFromPoints(pts);
+                const lineMat = new THREE.LineBasicMaterial({ color: ship.trajectory ? 0xFFDD00 : 0xFFFFFF, transparent: true, opacity: .65 });
+                trajectoryLine = new THREE.Line(geo, lineMat);
+                scene.add(trajectoryLine);
+            }
+            const last = pts[pts.length - 1];
+            const rg = new THREE.RingGeometry(8, 14, 20);
+            const rm = new THREE.MeshBasicMaterial({ color: 0xFF3300, side: THREE.DoubleSide, transparent: true, opacity: .9 });
+            trajectoryMarker = new THREE.Mesh(rg, rm);
+            trajectoryMarker.rotation.x = -Math.PI / 2;
+            trajectoryMarker.position.set(last.x, Math.max(last.y, 2), last.z);
+            scene.add(trajectoryMarker);
+        }
+
+        // ============================================================
+        //  SHOOTING PHASE
+        // ============================================================
+        let aimingCamPos = new THREE.Vector3(), aimingLookAt = new THREE.Vector3();
+
+        function startShootingPhase() {
+            gameState = 'AIMING';
+            ui.shooting.classList.remove('hidden'); ui.crosshair.style.display = 'block';
+            document.getElementById('aiming-ui').classList.remove('hidden');
+            document.getElementById('power-ui').classList.add('hidden');
+            const ship = shipsData[currentPlayerIndex];
+            const puText = ship.bigCannon ? ' [💥 مدفع ضخم]' : ship.trajectory ? ' [🎯 مسار مرئي]' : '';
+            document.getElementById('shooting-instructions').innerText = `وجه المدفع 360° بالأسهم ⬆️⬇️⬅️➡️ ثم [مسافة]${puText}`;
+            aimYaw = 0; aimPitch = 10; aimPower = 50;
+            updateAimUI(); updateAimingCamera();
+            if (ship.trajectory) updateTrajectoryPreview();
+        }
+
+        function updateAimUI() {
+            document.getElementById('bar-pitch').style.height = `${((aimPitch + 5) / 40) * 100}%`;
+            const norm = ((aimYaw % 360) + 360) % 360;
+            document.getElementById('bar-yaw').style.left = `${(norm / 360) * 100}%`;
+            document.getElementById('bar-power').style.height = `${((aimPower - 50) / 250) * 100}%`;
+        }
+
+        function updateAimingCamera() {
+            if (gameState !== 'AIMING' && gameState !== 'POWER') return;
+            const ship = shipsData[currentPlayerIndex];
+            const yr = (aimYaw * Math.PI) / 180, pr = (aimPitch * Math.PI) / 180;
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.mesh.quaternion).normalize();
+            const vd = fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yr);
+
+            if (ship.mesh.userData.cannonGroup) {
+                ship.mesh.userData.cannonGroup.rotation.y = yr;
+                ship.mesh.userData.cannonBarrel.rotation.x = Math.PI / 2 - pr;
+            }
+
+            if (gameState === 'POWER' && ship.trajectory && trajectoryMarker) {
+                const tmPos = trajectoryMarker.position;
+                const sPos = ship.mesh.position;
+                const dist = sPos.distanceTo(tmPos);
+
+                // Cap camera zoom out to prevent going out of bounds
+                const cappedDist = Math.min(dist, 800);
+                const camH = Math.min(750, Math.max(300, cappedDist * 0.8 + 150));
+                const co = new THREE.Vector3(0, camH, 0).add(vd.clone().multiplyScalar(-cappedDist * 0.35 - 150));
+
+                const mid = sPos.clone().lerp(tmPos, 0.55); // look slightly past halfway to frame far targets
+
+                aimingCamPos.copy(sPos).add(co);
+                aimingLookAt.copy(mid);
+                camera.position.lerp(aimingCamPos, 0.25);
+                camera.lookAt(aimingLookAt);
+            } else {
+                const co = new THREE.Vector3(0, 28, 0).add(vd.clone().multiplyScalar(-65));
+                aimingCamPos.copy(ship.mesh.position).add(co);
+                const ld = vd.clone(); ld.y = Math.sin(pr); ld.normalize();
+                aimingLookAt.copy(aimingCamPos).add(ld.multiplyScalar(280));
+                camera.position.copy(aimingCamPos); camera.lookAt(aimingLookAt);
+            }
+        }
+
+        // ============================================================
+        //  KEYBOARD
+        // ============================================================
+        window.addEventListener('keydown', e => {
+            if (gameState === 'MOVING') {
+                const m = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+                if (m[e.code]) { window.attemptMove(...m[e.code]); e.preventDefault(); }
+                if (e.code === 'Space') { window.proceedToShooting(); e.preventDefault(); }
+                if (e.code === 'Escape') { window.skipMovementTurn(); e.preventDefault(); }
+            } else if (gameState === 'AIMING') {
+                const s = shipsData[currentPlayerIndex];
+                if (e.code === 'ArrowLeft') { aimYaw = (aimYaw + 2); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (e.code === 'ArrowRight') { aimYaw = (aimYaw - 2); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (e.code === 'ArrowUp') { aimPitch = Math.min(35, aimPitch + 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (e.code === 'ArrowDown') { aimPitch = Math.max(-5, aimPitch - 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (e.code === 'Space') {
+                    e.preventDefault(); gameState = 'POWER';
+                    document.getElementById('aiming-ui').classList.add('hidden');
+                    document.getElementById('power-ui').classList.remove('hidden');
+                    const pInstr = s.trajectory ? 'حدد القوة ⬆️⬇️ ثم [مسافة] 🎯 المسار مرئي ومضاعف!' : 'حدد القوة ⬆️⬇️ ثم [مسافة] للإطلاق!';
+                    document.getElementById('shooting-instructions').innerText = pInstr;
+                    // Keep trajectory visible when entering POWER phase and update camera
+                    if (s.trajectory) {
+                        updateTrajectoryPreview();
+                        updateAimingCamera();
+                    }
+                }
+            } else if (gameState === 'POWER') {
+                const cs = shipsData[currentPlayerIndex];
+                const maxPow = cs.trajectory ? 600 : 300;
+                if (e.code === 'ArrowUp') { aimPower = Math.min(maxPow, aimPower + 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
+                if (e.code === 'ArrowDown') { aimPower = Math.max(50, aimPower - 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
+                if (e.code === 'Space') { e.preventDefault(); fireCannon(); }
+            }
+        });
+
+        // ============================================================
+        //  FIRE CANNON
+        // ============================================================
+        function fireCannon() {
+            clearTrajectory();
+            const ship = shipsData[currentPlayerIndex];
+            savedYaw = aimYaw; savedPitch = aimPitch; savedPower = aimPower;
+
+            currentProjectileBig = ship.bigCannon;
+            currentProjectileDamage = ship.bigCannon ? 10 : 5;
+            if (ship.bigCannon) ship.bigCannon = false;
+
+            gameState = 'ANIMATING';
+            ui.shooting.classList.add('hidden'); ui.crosshair.style.display = 'none';
+
+            const pR = currentProjectileBig ? 10 : 2.5;
+
+            const toFire = [];
+            if (ship.mines) {
+                ship.mines = false;
+                toFire.push({ yawOff: -5, delay: 0, isMine: true });
+                toFire.push({ yawOff: 0, delay: 0, isMine: true });
+                toFire.push({ yawOff: 5, delay: 0, isMine: true });
+            } else {
+                toFire.push({ yawOff: 0, delay: 0, isMine: false });
+                if (ship.autoRepeat) {
+                    ship.autoRepeat = false;
+                    toFire.push({ yawOff: 0, delay: 0.25, isMine: false }); // 250ms fire delay
+                }
+            }
+
+            const effectivePower = ship.trajectory ? aimPower * 2 : aimPower;
+            ship.trajectory = false; // consume trajectory PU on fire
+
+            const sp = ship.mesh.position.clone(); sp.y += 12;
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.mesh.quaternion).normalize();
+
+            activeProjectiles = [];
+            playSound('shoot');
+
+            toFire.forEach(tf => {
+                const yr = ((aimYaw + tf.yawOff) * Math.PI) / 180, pr = (aimPitch * Math.PI) / 180;
+                const vd = fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yr);
+                const fd = vd.clone(); fd.y = Math.sin(pr); fd.normalize();
+
+                let pM;
+                if (tf.isMine) pM = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+                else pM = new THREE.MeshStandardMaterial({ color: currentProjectileBig ? 0xFF4400 : 0x111111, metalness: .9, roughness: currentProjectileBig ? .5 : .4, emissive: currentProjectileBig ? new THREE.Color(.3, 0, 0) : new THREE.Color(0, 0, 0) });
+
+                const pMesh = new THREE.Mesh(new THREE.SphereGeometry(tf.isMine ? 4 : pR, 12, 12), pM);
+                const origin = sp.clone().add(fd.clone().multiplyScalar(15));
+                pMesh.position.copy(origin);
+                const vel = fd.clone().multiplyScalar(effectivePower * .85);
+
+                activeProjectiles.push({
+                    mesh: pMesh,
+                    velocity: vel,
+                    origin: origin,
+                    traveled: 0,
+                    damage: currentProjectileDamage,
+                    isMine: tf.isMine,
+                    delay: tf.delay,
+                    inScene: false,
+                    dead: false
+                });
+            });
+
+            const fl = new THREE.PointLight(currentProjectileBig ? 0xFF4400 : 0xffaa00, currentProjectileBig ? 5 : 2, currentProjectileBig ? 100 : 50);
+            fl.position.copy(sp); scene.add(fl); setTimeout(() => scene.remove(fl), 100);
+        }
+
+        // ============================================================
+        //  CAMERA
+        // ============================================================
+        let isAnimCam = false, camTP = new THREE.Vector3(), camTL = new THREE.Vector3(), curLookAt = new THREE.Vector3();
+        function animateCamera(tp, tl) { camTP.copy(tp); camTL.copy(tl); isAnimCam = true; }
+
+        // ============================================================
+        //  START BUTTON
+        // ============================================================
+        document.getElementById('start-btn').addEventListener('click', () => {
+            questions = parseQuestions(document.getElementById('questions-input').value);
+            originalQuestions = [...questions]; usedQuestions = [];
+            ui.setup.classList.add('hidden');
+            ui.hud.classList.remove('hidden');
+            document.getElementById('copy-scores-row').classList.remove('hidden');
+            ui.labels.classList.remove('hidden');
+            placeShipsRandomly();
+            initChests();
+            seaMines.forEach(m => scene.remove(m.mesh)); seaMines.length = 0;
+            pendingAutoRepeat = false;
+            updateHUD();
+            currentPlayerIndex = 0; startTriviaPhase();
+        });
+
+        // ============================================================
+        //  MAIN LOOP
+        // ============================================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta(), time = clock.getElapsedTime();
+
+            // Ocean
+            const pos = ocean.geometry.attributes.position;
+            for (let i = 0; i < waves.length; i++)pos.setZ(i, waves[i].z + Math.sin(waves[i].ang + time * waves[i].spd * 80) * waves[i].amp);
+            pos.needsUpdate = true; ocean.geometry.computeVertexNormals();
+
+            // Chest glow pulse + rotation
+            chests.forEach(c => {
+                c.mesh.rotation.y += delta * .6;
+                if (c.mesh.userData.glow) c.mesh.userData.glow.intensity = .5 + Math.sin(time * 3) * .35;
+            });
+            // Mine rotation
+            seaMines.forEach(m => { m.mesh.rotation.y += delta * .4; m.mesh.position.y = 3 + Math.sin(time * 2 + m.gx) * .8; });
+
+            // Ships
+            shipsData.forEach(ship => {
+                if (!ship.mesh) return;
+                if (!ship.isDead && gameState !== 'MOVE_ANIMATING') {
+                    const ig = ship.mesh.userData.innerGroup;
+                    ig.position.y = Math.sin(time * 1.5 + ship.id) * 2.2;
+                    ig.rotation.z = Math.sin(time * 1.2 + ship.id) * .033;
+                    ig.rotation.x = Math.sin(time * .8 + ship.id) * .017;
+                } else if (ship.isDead) {
+                    const ig = ship.mesh.userData.innerGroup;
+                    if (ig.position.y > -35) { ig.position.y -= 10 * delta; ig.rotation.z += .55 * delta; ig.rotation.x += .22 * delta; }
+                }
+                if (gameState !== 'SETUP' && !ship.isDead && ship.labelEl) {
+                    const tp = ship.mesh.position.clone(); tp.y += 65; tp.project(camera);
+                    if (tp.z > 1) ship.labelEl.style.display = 'none';
+                    else { const sx = (tp.x * .5 + .5) * window.innerWidth, sy = (tp.y * -.5 + .5) * window.innerHeight; ship.labelEl.style.display = 'block'; ship.labelEl.style.left = sx + 'px'; ship.labelEl.style.top = sy + 'px'; ship.labelEl.style.transform = 'translate(-50%,-100%)'; }
+                }
+            });
+
+            // Camera lerp
+            if (isAnimCam && gameState !== 'AIMING' && gameState !== 'POWER' && gameState !== 'MOVE_ANIMATING') {
+                camera.position.lerp(camTP, .065); curLookAt.lerp(camTL, .065); camera.lookAt(curLookAt);
+                if (camera.position.distanceTo(camTP) < 3) isAnimCam = false;
+            }
+
+            // Projectiles
+            if (gameState === 'ANIMATING' && activeProjectiles.length > 0) {
+                let allDead = true;
+                for (let i = 0; i < activeProjectiles.length; i++) {
+                    let p = activeProjectiles[i];
+                    if (p.dead) continue;
+                    allDead = false;
+
+                    if (p.delay > 0) {
+                        p.delay -= delta;
+                        if (p.delay <= 0 && !p.inScene) {
+                            scene.add(p.mesh); p.inScene = true;
+                            const fl = new THREE.PointLight(0xffaa00, 2, 50);
+                            fl.position.copy(p.origin); scene.add(fl);
+                            setTimeout(() => scene.remove(fl), 100);
+                        }
+                        continue;
+                    }
+                    if (!p.inScene) { scene.add(p.mesh); p.inScene = true; }
+
+                    p.velocity.y -= 22 * delta;
+                    const step = p.velocity.clone().multiplyScalar(delta * 1.2);
+                    p.mesh.position.add(step);
+                    p.traveled += step.length();
+
+                    // Camera maps to first alive projectile
+                    if (i === 0 || activeProjectiles.every((ap, idx) => idx >= i || ap.dead)) {
+                        const off = p.velocity.clone().normalize().multiplyScalar(-65); off.y += 22;
+                        const fp = p.mesh.position.clone().add(off); if (fp.y < 15) fp.y = 15;
+                        camera.position.lerp(fp, .07); camera.lookAt(p.mesh.position);
+                    }
+
+                    let hit = false;
+
+                    // Terrain collision
+                    const { gx, gy } = worldToGrid(p.mesh.position.x, p.mesh.position.z);
+                    if (isInGrid(gx, gy) && terrainGrid[gx][gy] !== 0) {
+                        let colH = 10;
+                        if (terrainGrid[gx][gy] === 2) {
+                            const center = gridToWorld(gx, gy);
+                            const distSq = Math.pow(p.mesh.position.x - center.x, 2) + Math.pow(p.mesh.position.z - center.z, 2);
+                            if (distSq < 3200) colH = terrainHeights[`${gx},${gy}`] || 65; // realistic radius ~56
+                        }
+                        if (p.mesh.position.y <= colH) {
+                            hit = true;
+                            createExplosion(p.mesh.position.clone());
+                            scene.remove(p.mesh); p.dead = true;
+                            if (!p.isMine) showAlert("💥 اصطدم بالجزيرة!", "الطلقة انفجرت على الأرض!", "text-gray-300", "border-gray-500");
+                        }
+                    }
+
+                    // Water & mines logic
+                    if (!hit && p.mesh.position.y <= 0) {
+                        hit = true;
+                        if (p.isMine) {
+                            if (isInGrid(gx, gy) && terrainGrid[gx][gy] === 0 && !seaMines.some(m => m.gx === gx && m.gy === gy)) {
+                                const wp = gridToWorld(gx, gy);
+                                const mm = createMineMesh(); mm.position.set(wp.x, 2, wp.z); scene.add(mm);
+                                seaMines.push({ gx, gy, mesh: mm });
+                                createSplash(p.mesh.position.clone());
+                            }
+                        } else {
+                            createSplash(p.mesh.position.clone());
+                            if (activeProjectiles.length === 1) showAlert("💦 طاحت في البحر!", "حاول ضبط القوة والارتفاع.", "text-blue-300", "border-blue-500");
+                        }
+                        scene.remove(p.mesh); p.dead = true;
+                    }
+
+                    // Ship collision
+                    if (!hit) {
+                        for (let si = 0; si < shipsData.length; si++) {
+                            const s = shipsData[si]; if (s.isDead) continue;
+                            if (si === currentPlayerIndex && p.traveled < 70) continue;
+                            const hitRange = (si === currentPlayerIndex) ? 18 : 30;
+                            if (p.mesh.position.distanceTo(s.mesh.position) < hitRange) {
+                                hit = true;
+                                createExplosion(p.mesh.position.clone());
+                                scene.remove(p.mesh); p.dead = true;
+                                if (s.shield) {
+                                    clearShield(s);
+                                    showAlert("🛡️ درع امتص الضربة!", `درع ${s.name} حماها!`, "text-blue-400", "border-blue-500");
+                                } else {
+                                    s.health = Math.max(0, s.health - (p.isMine ? 5 : p.damage));
+                                    if (s.health <= 0) { s.health = 0; destroyShip(s); showAlert("💥 إصابة مدمرة!", `أغرقت ${s.name}!`, "text-red-500", "border-red-600"); }
+                                    else showAlert("💥 ضربة موفقة!", `${s.name} فقدت ${p.isMine ? 5 : p.damage} نقطة!`, "text-orange-400", "border-orange-500");
+                                }
+                                updateHUD();
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (allDead) {
+                    activeProjectiles = [];
+                    setTimeout(() => { if (gameState === 'ANIMATING') afterShotResolve(); }, 1500);
+                }
+            }
+
+            // Particles
+            for (let i = activeParticles.length - 1; i >= 0; i--) {
+                const p = activeParticles[i];
+                p.mesh.position.add(p.velocity.clone().multiplyScalar(delta));
+                p.velocity.y -= 15 * delta; p.mesh.scale.multiplyScalar(.96);
+                if (p.mesh.material.opacity > 0) p.mesh.material.opacity -= .018;
+                p.life -= delta; if (p.life <= 0) { scene.remove(p.mesh); activeParticles.splice(i, 1); }
+            }
+            renderer.render(scene, camera);
+        }
+
+        // ============================================================
+        //  PARTICLES
+        // ============================================================
+        function createSplash(pos) {
+            playSound('splash');
+            const g = new THREE.SphereGeometry(1, 8, 8), m = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: .8 });
+            for (let i = 0; i < 20; i++) { const mesh = new THREE.Mesh(g, m.clone()); mesh.position.copy(pos); mesh.position.y = 1; scene.add(mesh); activeParticles.push({ mesh, velocity: new THREE.Vector3((Math.random() - .5) * 38, Math.random() * 48, (Math.random() - .5) * 38), life: 1.9 }); }
+        }
+        function createExplosion(pos) {
+            playSound('explode');
+            const g = new THREE.SphereGeometry(1.5, 8, 8);
+            for (let i = 0; i < 40; i++) { const col = Math.random() > .5 ? 0xff4500 : (Math.random() > .5 ? 0xff0000 : 0xffcc00); const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 1 }); const mesh = new THREE.Mesh(g, m); mesh.position.copy(pos); scene.add(mesh); activeParticles.push({ mesh, velocity: new THREE.Vector3((Math.random() - .5) * 80, Math.random() * 80, (Math.random() - .5) * 80), life: 2.3 }); }
+            const fl = new THREE.PointLight(0xff5500, 7, 180); fl.position.copy(pos); scene.add(fl); setTimeout(() => scene.remove(fl), 380);
+        }
+
+        // استقبال أسئلة الدرس من الصفحة الأم (تبويب حرب السفن في صفحة الدرس)
+        window.addEventListener('message', e=>{
+            const d = e.data || {};
+            if(d.type==='questions' && Array.isArray(d.list) && d.list.length){
+                const txt = d.list.map(q=>[q.q, ...(q.options||[])]).flat().filter(Boolean).join('\n');
+                const ta = document.getElementById('questions-input');
+                if(ta && !ta.value.trim()) ta.value = txt;
+            }
+        });
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+
+</html>
