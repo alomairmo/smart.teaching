@@ -182,6 +182,8 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .lessonLink.doneL, .doneL{text-decoration:line-through; color:#9a948a !important}
 .lessonLink.prevUndone{color:#c62828; font-weight:600}
 .lessonLink.prevUndone::after{content:" ⚠"; font-size:.8em}
+.shipsOverlay{position:fixed;inset:0;z-index:4000;background:#0b1720}
+.shipsClose{position:absolute;top:10px;right:10px;z-index:4001;background:rgba(220,38,38,.92);color:#fff;border:0;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer;font-family:inherit;font-size:.9rem;box-shadow:0 2px 10px rgba(0,0,0,.5)}
 .ptsCell{white-space:nowrap}
 .ptsBtn{padding:5px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:800;font-size:.95rem;transition:transform .1s ease}
 .ptsBtn:active{transform:scale(.92)}
@@ -3681,7 +3683,7 @@ async function renderLpGroups(cls, w, pane){
   });
 }
 
-function initLpClassPanes(cls, lp){
+function initLpClassPanes(cls, w, li, lp){
   const sPane = lp.querySelector('#lpPaneSheet');
   const gPane = lp.querySelector('#lpPaneGroups');
   /* كشف الطلاب */
@@ -3736,6 +3738,37 @@ function initLpClassPanes(cls, lp){
     nameInp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
     ov.querySelector('#ngCancel').onclick=()=>ov.remove();
   };
+  /* حرب السفن */
+  const shipsSel = lp.querySelector('.lpShipsWeek');
+  lpFillWeeks(shipsSel, false);
+  shipsSel.value = CUR_WEEK;
+  lp.querySelector('.lpShipsPlay').onclick=()=>{
+    const gw = +shipsSel.value;
+    const ov2=document.createElement('div');
+    ov2.className='shipsOverlay';
+    ov2.innerHTML=`<button class="shipsClose">✖ إغلاق اللعبة</button><iframe src="battleship.html?cls=${cls}&w=${gw}" style="width:100%;height:100%;border:0" allow="autoplay"></iframe>`;
+    document.body.appendChild(ov2);
+    const ifr=ov2.querySelector('iframe');
+    ifr.addEventListener('load', async ()=>{
+      /* تمرير أسئلة الدرس (الجاهزة + أسئلة المعلم) للعبة */
+      const key=lessonKey(w,li);
+      await fetchCustomQuestions(cls,key);
+      const qs=((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key)).filter(it=>it.t==='mcq' && it.c && it.c.length>=3);
+      const list=qs.map(it=>{
+        const correct=it.c[it.a];
+        const wrongs=it.c.filter((_,i2)=>i2!==it.a).slice(0,2);
+        return {q:it.q, options:[correct, ...wrongs]};
+      }).filter(q=>q.options.length===3);
+      try{ ifr.contentWindow.postMessage({type:'questions', list}, '*'); }catch(e){}
+    });
+    ov2.querySelector('.shipsClose').onclick=()=>{
+      ov2.remove();
+      /* تحديث كشف المجموعات بعد اللعب */
+      if(groupsCache[cls]) groupsCache[cls].loaded=false;
+      renderLpGroups(cls, +gSel.value, gPane);
+      if(document.getElementById('sec-groups').classList.contains('active')) renderGroups();
+    };
+  };
   /* عرض مبدئي على الأسبوع الحالي */
   renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
   renderLpGroups(cls, +gSel.value, gPane);
@@ -3771,6 +3804,7 @@ function openLessonPage(cls,w,li){
       <button class="tab" data-pane="lpPaneQuiz">اختبر معلوماتك</button>
       <button class="tab" data-pane="lpPaneSheet">كشف الطلاب</button>
       <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
+      <button class="tab" data-pane="lpPaneShips">🚢 حرب السفن</button>
     </div>
     <div class="lpPane" id="lpPaneVideo">
       <div class="videoBox"><iframe src="${ytId ? 'https://www.youtube-nocookie.com/embed/' + ytId : 'https://www.youtube-nocookie.com/embed?listType=search&list=' + q}" title="شرح الدرس" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
@@ -3834,6 +3868,17 @@ function openLessonPage(cls,w,li){
       <div style="overflow-x:auto" class="lpWrap"></div>
       <div class="note">نقاط مجموعات ${c.grade} فقط — كل أسبوع يبدأ من 20 نقطة، ويزيد وينقص بأزرار +5 و−5، مع المجموع الكلي من بداية الفصل.</div>
     </div>
+    <div class="lpPane" id="lpPaneShips" style="display:none">
+      <div class="weekcard" style="margin-top:14px;text-align:center">
+        <h3>🚢 حرب السفن المعرفية</h3>
+        <div class="note" style="text-align:right">لعبة جماعية ثلاثية الأبعاد: كل سفينة تمثل مجموعة من مجموعات ${c.grade}، ونقاط صحتها هي <b>نقاط المجموعة في الأسبوع المحدد</b> — أي زيادة أو نقصان أثناء اللعب (إجابة صحيحة +5، إصابة سفينة، ألغام…) يُحفظ فوراً في كشف المجموعات. أسئلة «اختبر معلوماتك» لهذا الدرس تُمرَّر للعبة تلقائياً.</div>
+        <div class="controls" style="justify-content:center;margin-top:10px">
+          <label>الأسبوع:</label>
+          <select class="lpShipsWeek"></select>
+          <button class="pbtn2 lpShipsPlay">🚢 تشغيل اللعبة</button>
+        </div>
+      </div>
+    </div>
   </div>`;
   lp.style.display='block';
   document.body.style.overflow='hidden';
@@ -3861,7 +3906,7 @@ function openLessonPage(cls,w,li){
   });
   renderQuiz(cls,w,li,lp.querySelector('#lpPaneQuiz'));
   initBookTab(cls,w,li,lp.querySelector('#lpPaneBook'));
-  initLpClassPanes(cls, lp);
+  initLpClassPanes(cls, w, li, lp);
   /* الاختيار التلقائي من صفحة الدرس */
   lp.querySelector('#lpPick').onclick=()=>{
     const ov2 = openModal(`
