@@ -182,6 +182,13 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .lessonLink.doneL, .doneL{text-decoration:line-through; color:#9a948a !important}
 .lessonLink.prevUndone{color:#c62828; font-weight:600}
 .lessonLink.prevUndone::after{content:" ⚠"; font-size:.8em}
+.ptsCell{white-space:nowrap}
+.ptsBtn{padding:5px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:800;font-size:.95rem;transition:transform .1s ease}
+.ptsBtn:active{transform:scale(.92)}
+.ptsBtn.plus{color:#2e7d32;border-color:#a5d6a7}
+.ptsBtn.minus{color:#c62828;border-color:#ef9a9a}
+.ptsInp{width:56px;text-align:center;font-weight:800;font-size:1rem;padding:5px 4px;border:1px solid var(--line);border-radius:9px;margin:0 6px;color:#2e7d32}
+.ptsInp.low{color:#c62828;border-color:#ef9a9a}
 .lsubj{display:inline-block; color:#fff; font-size:.7rem; font-weight:700; padding:1px 8px; border-radius:8px; margin-left:6px; vertical-align:middle}
 .lessonItem{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:9px; box-shadow:var(--shadow); transition:transform .25s ease, box-shadow .25s ease}
 .lessonItem:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg)}
@@ -419,7 +426,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
       <span class="saved" id="groupSavedMsg"></span>
     </div>
     <div style="overflow-x:auto" id="groupWrap"></div>
-    <div class="note">اضغط على اسم المجموعة لعرض الأعضاء والقائد وإضافة أو حذف الطلاب (الإضافة عبر قائمة منسدلة تُرشّح النتائج أثناء الكتابة، وإذا بقي اسم واحد مطابق فاضغط Enter ليُضاف تلقائياً). تعديل درجة المجموعة يُطبَّق فوراً على جميع أعضائها في كشف الطلاب، وتعديل درجة أي طالب يُحدِّث درجة مجموعته تلقائياً (متوسط الأعضاء مقرَّباً لأقرب عدد صحيح). كل طالب ينتمي إلى مجموعة واحدة كحد أقصى.</div>
+    <div class="note">نظام نقاط المجموعات: تبدأ كل مجموعة أسبوعها من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>+5</b> و<b>−5</b> (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. يظهر لكل مجموعة مجموع نقاط الأسبوع المحدد و<b>المجموع الكلي من بداية الفصل</b>. اضغط على اسم المجموعة لعرض الأعضاء والقائد وإضافة أو حذف الطلاب. كل طالب ينتمي إلى مجموعة واحدة كحد أقصى.</div>
   </section>
 
   <!-- تبويب الدروس -->
@@ -1808,7 +1815,7 @@ async function fillColumn(cls,w,ci,mode){
       const msg=document.getElementById('groupSavedMsg');
       msg.textContent='جارٍ التعميم على المجموعات وأعضائها…';
       try{
-        for(const d of groupsCache[cls].defs){ await setGroupMark(cls,d.id,w,ci,v); }
+        for(const d of groupsCache[cls].defs){ await setGroupPoints(cls,d.id,w,Math.max(0,+v||0)); }
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
@@ -1842,7 +1849,7 @@ async function fillRow(cls,w,target,mode){
       const msg=document.getElementById('groupSavedMsg');
       msg.textContent='جارٍ التعميم على المجموعة وأعضائها…';
       try{
-        for(let ci=0;ci<CRITERIA.length;ci++){ await setGroupMark(cls,target,w,ci,v); }
+        await setGroupPoints(cls,target,w,Math.max(0,+v||0));
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
@@ -1993,7 +2000,7 @@ WEEKS.forEach(w=>{
   o.value=w; o.textContent=weekLabel(w);
   groupWeekSel.appendChild(o);
 });
-groupWeekSel.value = 1;
+groupWeekSel.value = CUR_WEEK;
 groupWeekSel.addEventListener('change', renderGroups);
 
 /* --- تخزين المجموعات في قاعدة البيانات ---
@@ -2037,48 +2044,34 @@ function findGroupOf(cls,si){
   return g.defs.find(d=>d.members.includes(si)) || null;
 }
 
-/* تعديل درجة المجموعة ← تطبيقها على كل الأعضاء في كشف الطلاب */
-async function setGroupMark(cls,gid,w,ci,v){
+/* ===== نظام نقاط المجموعات: كل أسبوع يبدأ من 20 نقطة ويزيد وينقص ===== */
+function getGroupPoints(cls,gid,w){
+  const m = groupsCache[cls] && groupsCache[cls].marks;
+  const wk = m && m[w] ? m[w] : {};
+  return (wk[gid] && wk[gid][0]!==undefined) ? wk[gid][0] : 20;
+}
+async function setGroupPoints(cls,gid,w,v){
   const g = groupsCache[cls];
   if(!g.marks[w]) g.marks[w]={};
   if(!g.marks[w][gid]) g.marks[w][gid]={};
-  g.marks[w][gid][ci]=v;
-  await pushGroupMark(cls,gid,w,ci,v);
-  const def = g.defs.find(d=>String(d.id)===String(gid));
-  if(def){
-    const store = marksCache[cls] && marksCache[cls].data;
-    if(store){
-      for(const si of def.members){
-        if(!store[w]) store[w]={};
-        if(!store[w][si]) store[w][si]={};
-        store[w][si][ci]=v;
-        await pushMark(cls,w,si,ci,v);
-      }
-    }
-  }
+  g.marks[w][gid][0]=v;
+  await pushGroupMark(cls,gid,w,0,v);
 }
-
-/* تعديل درجة طالب ← تحديث درجة المجموعة (متوسط الأعضاء لأقرب عدد صحيح) */
-async function syncGroupFromStudent(cls,w,si,ci){
-  if(!(groupsCache[cls] && groupsCache[cls].loaded)){
-    await fetchGroups(cls);
-  }
-  const def = findGroupOf(cls,si);
-  if(!def) return;
-  let sum=0, n=0;
-  for(const m of def.members){
-    const v = getMark(cls,w,m,ci);
-    if(!isAbsent(v)){ sum+=+v; n++; }
-  }
-  if(n===0) return;
-  const avg = Math.round(sum/n);
-  const g = groupsCache[cls];
-  if(!g.marks[w]) g.marks[w]={};
-  if(!g.marks[w][def.id]) g.marks[w][def.id]={};
-  g.marks[w][def.id][ci]=avg;
-  pushGroupMark(cls,def.id,w,ci,avg);
-  if(document.getElementById('sec-groups').classList.contains('active')) renderGroups();
+async function addGroupPoints(cls,gid,w,delta){
+  await setGroupPoints(cls,gid,w, Math.max(0, getGroupPoints(cls,gid,w)+delta));
 }
+/* المجموع الكلي من بداية الفصل (مجموع نقاط كل الأسابيع) */
+function groupTotalAll(cls,gid){
+  let s=0;
+  (CURRICULA[cls] ? CURRICULA[cls].weeks : []).forEach(wd=>{
+    if(typeof wd.week==='number' && wd.week<18) s+=getGroupPoints(cls,gid,wd.week);
+  });
+  return s;
+}
+/* توافق مع الاختيار التلقائي: «المجموع» = نقاط الأسبوع */
+function groupTotal(cls,gid,w){ return getGroupPoints(cls,gid,w); }
+/* لم يعد كشف الطلاب مرتبطاً بدرجات المجموعات */
+async function syncGroupFromStudent(cls,w,si,ci){ /* لا شيء — نظام النقاط مستقل */ }
 
 /* --- عرض جدول المجموعات --- */
 function groupTotal(cls,gid,w){
@@ -2102,34 +2095,36 @@ async function renderGroups(){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">لا توجد مجموعات بعد — اضغط «+ إضافة مجموعة» للبدء.</div>';
     return;
   }
-  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
-  const headers = ['اسم المجموعة', ...CRITERIA.map(c=>c+' (5)'), 'المجموع (30)'];
+  const cols = ['name','week','total'];
+  const headers = ['اسم المجموعة','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(gSortState.col!==null){
     order.sort((a,b)=>{
       let va,vb;
-      if(gSortState.col==='name'){ va=defs[a].name; vb=defs[b].name; return va.localeCompare(vb,'ar')*gSortState.dir; }
-      if(gSortState.col==='total'){ va=groupTotal(cls,defs[a].id,w); vb=groupTotal(cls,defs[b].id,w); }
-      else { va=markNum(getGroupMark(cls,defs[a].id,w,+gSortState.col)); vb=markNum(getGroupMark(cls,defs[b].id,w,+gSortState.col)); }
+      if(gSortState.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*gSortState.dir; }
+      if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id); vb=groupTotalAll(cls,defs[b].id); }
+      else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*gSortState.dir;
     });
   }
-  let html = `<table class="sheet"><tr><th style="cursor:default">م</th>`;
+  let html = `<table class="sheet gpts"><tr><th style="cursor:default">م</th>`;
   headers.forEach((h,idx)=>{
     const c = cols[idx];
     const arrow = gSortState.col===c ? (gSortState.dir===1?'▲':'▼') : '';
-    const fillBtn = (c!=='name' && c!=='total') ? `<button class="fillBtn" data-fillcol="${c}" title="تعميم درجة على كل خلايا العمود">⤵</button>` : '';
-    html += `<th data-col="${c}">${h}${fillBtn}<span class="arrow">${arrow}</span></th>`;
+    html += `<th data-col="${c}">${h}<span class="arrow">${arrow}</span></th>`;
   });
   html += `</tr>`;
   order.forEach((di,r)=>{
     const d = defs[di];
-    html += `<tr><td>${r+1}</td><td class="name"><button class="gnameBtn" data-gid="${d.id}">${d.name}</button> <span class="mcount">(${d.members.length} طالب)</span> <button class="fillBtn" data-fillrow="${di}" title="تعميم درجة على كل معايير المجموعة هذا الأسبوع">⤵</button></td>`;
-    for(let ci=0;ci<CRITERIA.length;ci++){
-      const v = getGroupMark(cls,d.id,w,ci);
-      html += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-gid="${d.id}" data-ci="${ci}" title="درجة 0-7 أو غ"></td>`;
-    }
-    html += `<td class="total">${groupTotal(cls,d.id,w)}</td></tr>`;
+    const pts = getGroupPoints(cls,d.id,w);
+    html += `<tr><td>${r+1}</td>
+      <td class="name"><button class="gnameBtn" data-gid="${d.id}">${d.name}</button> <span class="mcount">(${d.members.length} طالب)</span></td>
+      <td class="ptsCell">
+        <button class="ptsBtn minus" data-gid="${d.id}" data-d="-5" title="خصم 5 نقاط">−5</button>
+        <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
+        <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
+      </td>
+      <td class="total">${groupTotalAll(cls,d.id)}</td></tr>`;
   });
   html += `</table>`;
   wrapEl.innerHTML = html;
@@ -2144,32 +2139,39 @@ async function renderGroups(){
   wrapEl.querySelectorAll('.gnameBtn').forEach(b=>{
     b.onclick=()=>openGroupModal(cls, b.dataset.gid);
   });
-  wrapEl.querySelectorAll('[data-fillcol]').forEach(b=>{
-    b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'groups'); };
-  });
-  wrapEl.querySelectorAll('[data-fillrow]').forEach(b=>{
-    b.onclick=()=>{ fillRow(cls,w,groupsCache[cls].defs[+b.dataset.fillrow].id,'groups'); };
-  });
-  enableArrowNav(wrapEl);
-  wrapEl.querySelectorAll('input[data-gid]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
-      let v = inp.value.trim();
-      if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
-      else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(7,n)); }
-      inp.value=v;
-      const gid=inp.dataset.gid, ci=+inp.dataset.ci;
-      inp.className=markClass(v);
-      inp.setAttribute('style', markColor(v));
-      const tr=inp.closest('tr');
-      const msg=document.getElementById('groupSavedMsg');
-      msg.textContent='جارٍ الحفظ وتطبيقها على الأعضاء…';
+  const msg=document.getElementById('groupSavedMsg');
+  const savePts=async(gid,v)=>{
+    msg.textContent='جارٍ الحفظ…';
+    try{ await setGroupPoints(cls,gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
+    catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+    setTimeout(()=>msg.textContent='',2000);
+  };
+  wrapEl.querySelectorAll('.ptsBtn').forEach(b=>{
+    b.onclick=async ()=>{
+      const gid=b.dataset.gid, d=+b.dataset.d;
+      const inp=wrapEl.querySelector(`.ptsInp[data-gid="${gid}"]`);
+      const nv=Math.max(0, getGroupPoints(cls,gid,w)+d);
+      inp.value=nv;
+      inp.classList.toggle('low', nv<20);
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid) + d;
       try{
-        await setGroupMark(cls,gid,w,ci,v);
-        tr.querySelector('.total').textContent = groupTotal(cls,gid,w);
-        msg.textContent='تم الحفظ وتطبيقها على الأعضاء ✓';
-        if(document.getElementById('sec-sheets').classList.contains('active') && curSheet===cls) renderSheet();
+        await addGroupPoints(cls,gid,w,d);
+        msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid);
+      setTimeout(()=>msg.textContent='',2000);
+    };
+  });
+  wrapEl.querySelectorAll('.ptsInp').forEach(inp=>{
+    inp.classList.toggle('low', +inp.value<20);
+    inp.addEventListener('change', async ()=>{
+      let v=parseInt(inp.value);
+      if(isNaN(v)) v=20;
+      v=Math.max(0,v);
+      inp.value=v;
+      inp.classList.toggle('low', v<20);
+      await savePts(inp.dataset.gid, v);
+      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid);
     });
   });
 }
@@ -2381,7 +2383,7 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
         <option value="random"${pre.method==='random'?' selected':''}>عشوائي</option>
         <option value="name"${pre.method==='name'?' selected':''}>ترتيب اسمي</option>
         <option value="total"${pre.method==='total'?' selected':''}>بحسب مجمل الدرجات</option>
-        ${CRITERIA.map((c,i)=>`<option value="col${i}"${pre.method==='col'+i?' selected':''}>بحسب درجة: ${c}</option>`).join('')}
+        ${mode==='students' ? CRITERIA.map((c,i)=>`<option value="col${i}"${pre.method==='col'+i?' selected':''}>بحسب درجة: ${c}</option>`).join('') : ''}
         <option value="manual"${pre.method==='manual'?' selected':''}>${mode==='students'?'طالب محدد بعينه':'مجموعة محددة بعينها'}</option>
       </select></div>
     <div class="frow" id="pkManualRow" style="display:none">
@@ -2607,7 +2609,7 @@ function pickerNext(){
       syncGroupFromStudent(p.cls,p.w,id,p.crit);
       if(document.getElementById('sec-sheets').classList.contains('active')) renderSheet();
     } else {
-      try{ await setGroupMark(p.cls,id,p.w,p.crit,v); }catch(e){}
+      try{ await addGroupPoints(p.cls,id,p.w, v>=5?5:(v<=0?-5:0)); }catch(e){}
       renderGroups();
     }
     await new Promise(r=>setTimeout(r, kind==='good'?1200:950));
@@ -3600,34 +3602,36 @@ async function renderLpGroups(cls, w, pane){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">لا توجد مجموعات بعد — اضغط «+ إضافة مجموعة» للبدء.</div>';
     return;
   }
-  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
-  const headers = ['اسم المجموعة', ...CRITERIA.map(c=>c+' (5)'), 'المجموع (30)'];
+  const cols = ['name','week','total'];
+  const headers = ['اسم المجموعة','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(lpGroupSort.col!==null){
     order.sort((a,b)=>{
       let va,vb;
-      if(lpGroupSort.col==='name'){ va=defs[a].name; vb=defs[b].name; return va.localeCompare(vb,'ar')*lpGroupSort.dir; }
-      if(lpGroupSort.col==='total'){ va=groupTotal(cls,defs[a].id,w); vb=groupTotal(cls,defs[b].id,w); }
-      else { va=markNum(getGroupMark(cls,defs[a].id,w,+lpGroupSort.col)); vb=markNum(getGroupMark(cls,defs[b].id,w,+lpGroupSort.col)); }
+      if(lpGroupSort.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*lpGroupSort.dir; }
+      if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id); vb=groupTotalAll(cls,defs[b].id); }
+      else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*lpGroupSort.dir;
     });
   }
-  let h = `<table class="sheet"><tr><th style="cursor:default">م</th>`;
+  let h = `<table class="sheet gpts"><tr><th style="cursor:default">م</th>`;
   headers.forEach((hd,idx)=>{
     const c = cols[idx];
     const arrow = lpGroupSort.col===c ? (lpGroupSort.dir===1?'▲':'▼') : '';
-    const fillBtn = (c!=='name' && c!=='total') ? `<button class="fillBtn" data-fillcol="${c}" title="تعميم درجة على كل خلايا العمود">⤵</button>` : '';
-    h += `<th data-col="${c}">${hd}${fillBtn}<span class="arrow">${arrow}</span></th>`;
+    h += `<th data-col="${c}">${hd}<span class="arrow">${arrow}</span></th>`;
   });
   h += `</tr>`;
   order.forEach((di,r)=>{
     const d = defs[di];
-    h += `<tr><td>${r+1}</td><td class="name"><button class="gnameBtn" data-gid="${d.id}">${d.name}</button> <span class="mcount">(${d.members.length} طالب)</span> <button class="fillBtn" data-fillrow="${di}" title="تعميم درجة على كل معايير المجموعة هذا الأسبوع">⤵</button></td>`;
-    for(let ci=0;ci<CRITERIA.length;ci++){
-      const v = getGroupMark(cls,d.id,w,ci);
-      h += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-gid="${d.id}" data-ci="${ci}" title="درجة 0-7 أو غ"></td>`;
-    }
-    h += `<td class="total">${groupTotal(cls,d.id,w)}</td></tr>`;
+    const pts = getGroupPoints(cls,d.id,w);
+    h += `<tr><td>${r+1}</td>
+      <td class="name"><button class="gnameBtn" data-gid="${d.id}">${d.name}</button> <span class="mcount">(${d.members.length} طالب)</span></td>
+      <td class="ptsCell">
+        <button class="ptsBtn minus" data-gid="${d.id}" data-d="-5" title="خصم 5 نقاط">−5</button>
+        <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
+        <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
+      </td>
+      <td class="total">${groupTotalAll(cls,d.id)}</td></tr>`;
   });
   h += `</table>`;
   wrapEl.innerHTML = h;
@@ -3641,45 +3645,38 @@ async function renderLpGroups(cls, w, pane){
   wrapEl.querySelectorAll('.gnameBtn').forEach(b=>{
     b.onclick=()=>{
       openGroupModal(cls, b.dataset.gid);
-      lpRefreshAfterModal(()=>{ renderLpGroups(cls,w,pane);
-        const sPane=document.querySelector('#lessonPage #lpPaneSheet');
-        if(sPane && sPane.style.display!=='none'){
-          const sw=sPane.querySelector('.lpWeekSel').value;
-          renderLpSheet(cls, sw==='avg'?'avg':+sw, sPane);
-        }
-      });
+      lpRefreshAfterModal(()=>renderLpGroups(cls,w,pane));
     };
   });
-  wrapEl.querySelectorAll('[data-fillcol]').forEach(b=>{
-    b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'groups'); };
-  });
-  wrapEl.querySelectorAll('[data-fillrow]').forEach(b=>{
-    b.onclick=()=>{ fillRow(cls,w,groupsCache[cls].defs[+b.dataset.fillrow].id,'groups'); };
-  });
-  enableArrowNav(wrapEl);
-  wrapEl.querySelectorAll('input[data-gid]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
-      let v = inp.value.trim();
-      if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
-      else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(7,n)); }
-      inp.value=v;
-      const gid=inp.dataset.gid, ci=+inp.dataset.ci;
-      inp.className=markClass(v);
-      inp.setAttribute('style', markColor(v));
-      const tr=inp.closest('tr');
-      msg.textContent='جارٍ الحفظ وتطبيقها على الأعضاء…';
+  wrapEl.querySelectorAll('.ptsBtn').forEach(b=>{
+    b.onclick=async ()=>{
+      const gid=b.dataset.gid, d=+b.dataset.d;
+      const inp=wrapEl.querySelector(`.ptsInp[data-gid="${gid}"]`);
+      const nv=Math.max(0, getGroupPoints(cls,gid,w)+d);
+      inp.value=nv;
+      inp.classList.toggle('low', nv<20);
+      msg.textContent='جارٍ الحفظ…';
       try{
-        await setGroupMark(cls,gid,w,ci,v);
-        tr.querySelector('.total').textContent = groupTotal(cls,gid,w);
-        msg.textContent='تم الحفظ وتطبيقها على الأعضاء ✓';
-        const sPane = document.querySelector('#lessonPage #lpPaneSheet');
-        if(sPane && sPane.style.display!=='none'){
-          const sw = sPane.querySelector('.lpWeekSel').value;
-          if(sw!=='avg') renderLpSheet(cls, +sw, sPane);
-        }
-        if(document.getElementById('sec-sheets').classList.contains('active') && curSheet===cls) renderSheet();
+        await addGroupPoints(cls,gid,w,d);
+        msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
+      b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid);
+      setTimeout(()=>msg.textContent='',2000);
+    };
+  });
+  wrapEl.querySelectorAll('.ptsInp').forEach(inp=>{
+    inp.classList.toggle('low', +inp.value<20);
+    inp.addEventListener('change', async ()=>{
+      let v=parseInt(inp.value);
+      if(isNaN(v)) v=20;
+      v=Math.max(0,v);
+      inp.value=v;
+      inp.classList.toggle('low', v<20);
+      msg.textContent='جارٍ الحفظ…';
+      try{ await setGroupPoints(cls,inp.dataset.gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
+      catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid);
+      setTimeout(()=>msg.textContent='',2000);
     });
   });
 }
@@ -3835,7 +3832,7 @@ function openLessonPage(cls,w,li){
         <span class="saved lpMsg"></span>
       </div>
       <div style="overflow-x:auto" class="lpWrap"></div>
-      <div class="note">درجات مجموعات ${c.grade} فقط. تعديل درجة المجموعة يُطبَّق فوراً على جميع أعضائها في كشف الطلاب.</div>
+      <div class="note">نقاط مجموعات ${c.grade} فقط — كل أسبوع يبدأ من 20 نقطة، ويزيد وينقص بأزرار +5 و−5، مع المجموع الكلي من بداية الفصل.</div>
     </div>
   </div>`;
   lp.style.display='block';
