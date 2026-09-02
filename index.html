@@ -362,11 +362,18 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .qsTools{display:flex; gap:8px; flex-wrap:wrap}
 .qsTools .pbtn2{font-size:.85rem}
 .qsNotice{font-size:.8rem; color:#b26a00; background:#fff4dd; border:1px solid #ecd9ae; border-radius:8px; padding:4px 10px; margin:6px 0; display:inline-block}
-#qSession:fullscreen{background:#fff; padding:24px; overflow:auto}
-#qSession:fullscreen .qsName{font-size:2.2rem}
-#qSession:fullscreen .qsQ{font-size:1.6rem}
-#qSession:fullscreen .qCh{font-size:1.2rem; padding:14px 18px}
-#qSession:fullscreen .qAns{font-size:1.3rem}
+.grpTag{display:inline-block;font-size:.72rem;background:#eef4f3;color:#3f6f6a;border:1px solid #cfdedd;border-radius:10px;padding:1px 8px;margin-right:6px;vertical-align:middle}
+#qSession:fullscreen{background:#fff; padding:2vh 3vw; overflow:auto; display:flex; flex-direction:column}
+#qSession:fullscreen #qsBody{flex:1; display:flex; flex-direction:column; justify-content:space-evenly}
+#qSession:fullscreen .qsTop{margin-bottom:0; font-size:.8rem}
+#qSession:fullscreen .qsTitle{font-size:min(1.8vw,2.6vh)}
+#qSession:fullscreen .qsName{font-size:min(6vw,9vh)}
+#qSession:fullscreen .qsCount{font-size:min(1.8vw,2.6vh); margin-bottom:0}
+#qSession:fullscreen .qsQ{font-size:min(4.2vw,6.5vh)}
+#qSession:fullscreen .qsCh{font-size:min(3.4vw,5.5vh); padding:2vh 3vw}
+#qSession:fullscreen .qsMain .pbtn2{font-size:min(3vw,5vh)}
+#qSession:fullscreen .qAns{font-size:min(3.6vw,5.5vh)}
+#qSession:fullscreen .qsTools .pbtn2, #qSession:fullscreen .qsTop .pbtn2{font-size:min(1.8vw,2.6vh)}
 </style>
 </head>
 <body>
@@ -1884,6 +1891,7 @@ async function renderSheet(){
   if(!(marksCache[cls] && marksCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
     await fetchClassMarks(cls);
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
     await fetchExtraStudents(cls);
   }
   const students = ROSTERS[cls].students;
@@ -1920,7 +1928,9 @@ async function renderSheet(){
 
   order.forEach((si,r)=>{
     const rowFill = (w!=='avg') ? ` <button class="fillBtn" data-fillrow="${si}" title="تعميم درجة على كل معايير الطالب هذا الأسبوع">⤵</button>` : '';
-    html += `<tr><td>${r+1}</td><td class="name">${students[si]}${rowFill}</td>`;
+    const g = findGroupOf(cls,si);
+    const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
+    html += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}</td>`;
     for(let ci=0;ci<CRITERIA.length;ci++){
       if(w==='avg'){
         const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
@@ -2390,11 +2400,20 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
     if(typeof wd.week!=='number') return;
     (wd.lessons||[]).forEach((l,li)=>{
       const k = wd.week+':'+li;
-      if(qzCls[k] && qzCls[k].length) qzLessons.push({k, title:lessonTitle(l)});
+      if(qzCls[k] && qzCls[k].length) qzLessons.push({k, title:lessonTitle(l), subj: lessonSubjectOf(cls,wd.week,li,l)||'أخرى'});
     });
   });
+  /* المواد المتوفرة فعلاً بين دروس الأسئلة — بترتيب ثابت ثم «أخرى» */
+  const QSUBJ_ORDER = ['توحيد','حديث','فقه','قرآن حفظ','قرآن تلاوة','أخرى'];
+  const qzSubjs = [...new Set(qzLessons.map(x=>x.subj))]
+    .sort((a,b)=>QSUBJ_ORDER.indexOf(a)-QSUBJ_ORDER.indexOf(b));
   let qzDefSrc = (pre.qsrc && qzCls[pre.qsrc] && qzCls[pre.qsrc].length) ? pre.qsrc : (qzLessons.length?qzLessons[0].k:'');
-  const qzSrcOpts = qzLessons.map(x=>`<option value="${x.k}"${x.k===qzDefSrc?' selected':''}>${x.title}</option>`).join('');
+  let qzDefSubj = qzDefSrc ? ((qzLessons.find(x=>x.k===qzDefSrc)||{}).subj) : qzSubjs[0];
+  if(!qzSubjs.includes(qzDefSubj)) qzDefSubj = qzSubjs[0];
+  const qzSubjOpts = qzSubjs.map(sj=>`<option value="${sj}"${sj===qzDefSubj?' selected':''}>${sj}</option>`).join('');
+  const qzLessonOptsFor = (sj)=> qzLessons.filter(x=>x.subj===sj)
+    .map(x=>`<option value="${x.k}"${x.k===qzDefSrc?' selected':''}>${x.title}</option>`).join('');
+  const qzSrcOpts = qzLessonOptsFor(qzDefSubj);
   const ov = openModal(`
     <h3>إعدادات الاختيار التلقائي — ${mode==='students'?'الطلاب':'المجموعات'} (${ROSTERS[cls].class} — ${weekLabel(w)})</h3>
     <div class="frow"><label>طريقة الاختيار</label>
@@ -2427,7 +2446,8 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
       </select></div>
     ${qzLessons.length?`
     <div id="pkQOpts" style="display:none">
-      <div class="frow"><label>مصدر الأسئلة</label><select id="pkQSrc">${qzSrcOpts}</select></div>
+      <div class="frow"><label>مادة الأسئلة</label><select id="pkQSubj">${qzSubjOpts}</select></div>
+      <div class="frow"><label>درس الأسئلة</label><select id="pkQSrc">${qzSrcOpts}</select></div>
       <div class="frow"><label>نوع الأسئلة</label><select id="pkQType">
         <option value="mcq"${pre.qtype==='mcq'?' selected':''}>بخيارات فقط</option>
         <option value="open"${pre.qtype==='open'?' selected':''}>بدون خيارات (المعلم يقيّم)</option>
@@ -2460,6 +2480,12 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
   attachAutocomplete(manualInp, manualList, getItems, it=>{ manualId = it.id; });
   manualInp.addEventListener('input', ()=>{ manualId = null; });
   syncManualRow();
+  /* عند تغيير المادة تُملأ قائمة الدروس بدروسها فقط ويُختار أول درس */
+  const qSubjSel = ov.querySelector('#pkQSubj');
+  const qSrcSel = ov.querySelector('#pkQSrc');
+  if(qSubjSel && qSrcSel){
+    qSubjSel.addEventListener('change', ()=>{ qSrcSel.innerHTML = qzLessonOptsFor(qSubjSel.value); });
+  }
   const qOnSel = ov.querySelector('#pkQOn');
   const qOpts = ov.querySelector('#pkQOpts');
   if(qOnSel && qOpts){
@@ -2733,17 +2759,24 @@ function applyLessonDone(){
   });
 }
 
-/* هل يوجد درس سابق (في أسبوع أسبق أو نفس الأسبوع قبله) لم يُعلَّم كـ«تم شرحه»؟ */
+/* هل يوجد درس سابق (في أسبوع أسبق أو نفس الأسبوع قبله) **من نفس المادة** لم يُعلَّم كـ«تم شرحه»؟
+   تُقارن المواد عبر lessonSubjectOf؛ المادة الفارغة '' مادة قائمة بذاتها */
 function hasEarlierUndone(cls, w, li){
   const done = lessonsDone[cls];
   if(!done) return false;
+  const curWd = CURRICULA[cls].weeks.find(wd=>wd.week===w);
+  const curText = curWd ? (curWd.lessons||[])[li] : null;
+  const curSubj = lessonSubjectOf(cls, w, li, curText!=null ? String(curText) : '');
   const weeks = CURRICULA[cls].weeks.filter(wd=>typeof wd.week==='number' && wd.week<18).sort((a,b)=>a.week-b.week);
   for(const wd of weeks){
     if(wd.week > w) break;
     const n=(wd.lessons||[]).length;
     for(let i=0;i<n;i++){
       if(wd.week===w && i>=li) break;
-      if(!done.has(lessonKey(wd.week,i))) return true;
+      if(!done.has(lessonKey(wd.week,i))){
+        const lt = (wd.lessons||[])[i];
+        if(lessonSubjectOf(cls, wd.week, i, lt!=null ? String(lt) : '') === curSubj) return true;
+      }
     }
   }
   return false;
@@ -3050,11 +3083,37 @@ async function renderQuiz(cls,w,li,box){
 
 /* ====== جلسة «اختبار بالاختيار التلقائي» داخل تبويب اختبر معلوماتك ====== */
 let quizSession = null;
-/* نافذة إعدادات الجلسة (طلاب فقط، مصدر الأسئلة = درس التبويب الحالي، النوع = كليهما) */
+/* نافذة إعدادات الجلسة: بالطلاب أو بالمجموعات، مصدر الأسئلة = مادة ثم درس (أو بدون أسئلة) */
 function qsOpenSettings(cls,w,li,box){
   const critOpts = CRITERIA.map((c,i)=>`<option value="${i}"${i===2?' selected':''}>${c}</option>`).join('');
+  /* دروس هذا الفصل التي لها أسئلة، مع مادة كل درس */
+  const qzCls = QUIZZES[cls] || {};
+  const qzLessons = [];
+  CURRICULA[cls].weeks.forEach(wd=>{
+    if(typeof wd.week!=='number') return;
+    (wd.lessons||[]).forEach((l,li2)=>{
+      const k = wd.week+':'+li2;
+      if(qzCls[k] && qzCls[k].length) qzLessons.push({k, title:lessonTitle(l), subj: lessonSubjectOf(cls,wd.week,li2,l)||'أخرى'});
+    });
+  });
+  const QSUBJ_ORDER = ['توحيد','حديث','فقه','قرآن حفظ','قرآن تلاوة','أخرى'];
+  const qzSubjs = [...new Set(qzLessons.map(x=>x.subj))]
+    .sort((a,b)=>QSUBJ_ORDER.indexOf(a)-QSUBJ_ORDER.indexOf(b));
+  const curKey = lessonKey(w,li);
+  let defSubj = ((qzLessons.find(x=>x.k===curKey)||{}).subj);
+  if(!qzSubjs.includes(defSubj)) defSubj = qzSubjs[0] || '';
+  const qsSubjOpts = `<option value="noq">بدون أسئلة</option>` +
+    qzSubjs.map(sj=>`<option value="${sj}"${sj===defSubj?' selected':''}>${sj}</option>`).join('');
+  const qsLessonOptsFor = (sj)=> qzLessons.filter(x=>x.subj===sj)
+    .map(x=>`<option value="${x.k}"${x.k===curKey?' selected':''}>${x.title}</option>`).join('');
+  const qsSrcOpts = defSubj ? qsLessonOptsFor(defSubj) : '';
   const ov = openModal(`
     <h3>🎯 اختبار بالاختيار التلقائي — ${ROSTERS[cls].class}</h3>
+    <div class="frow"><label>طريقة السحب</label>
+      <select id="qsMode">
+        <option value="students">بالطلاب</option>
+        <option value="groups">بالمجموعات</option>
+      </select></div>
     <div class="frow"><label>طريقة الاختيار</label>
       <select id="qsMethod">
         <option value="random">عشوائي</option>
@@ -3062,6 +3121,8 @@ function qsOpenSettings(cls,w,li,box){
         <option value="total">بحسب مجمل الدرجات</option>
         ${CRITERIA.map((c,i)=>`<option value="col${i}">بحسب درجة: ${c}</option>`).join('')}
       </select></div>
+    <div class="frow" id="qsRotateRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="qsRotate" style="width:20px;height:20px;accent-color:var(--teal)"> 👥 بالتناوب: طالب من كل مجموعة بالتناوب</label></div>
     <div class="frow"><label>اتجاه الترتيب</label>
       <select id="qsDir">
         <option value="desc">تنازلي (يبدأ من أ / الأعلى)</option>
@@ -3071,7 +3132,9 @@ function qsOpenSettings(cls,w,li,box){
       <select id="qsWeek">${WEEKS.map(x=>`<option value="${x}"${x===w?' selected':''}>${weekLabel(x)}</option>`).join('')}</select></div>
     <div class="frow"><label>المعيار الذي تُسجَّل فيه الدرجة</label><select id="qsCrit">${critOpts}</select></div>
     <div class="frow"><label>قيمة درجة الإجابة الصحيحة</label><input id="qsVal" type="number" min="0" max="7" value="5"></div>
-    <div class="frow"><label>ترتيب الأسئلة</label><select id="qsQOrder">
+    <div class="frow"><label>مادة الأسئلة</label><select id="qsQSubj">${qsSubjOpts}</select></div>
+    <div class="frow" id="qsQSrcRow"><label>درس الأسئلة</label><select id="qsQSrc"${qsSrcOpts?'':' disabled'}>${qsSrcOpts}</select></div>
+    <div class="frow" id="qsQOrderRow"><label>ترتيب الأسئلة</label><select id="qsQOrder">
       <option value="seq">بالترتيب</option>
       <option value="rand">عشوائي</option>
     </select></div>
@@ -3083,9 +3146,25 @@ function qsOpenSettings(cls,w,li,box){
   const qOrderSel = ov.querySelector('#qsQOrder');
   const syncRep = ()=>{ ov.querySelector('#qsQRepeatRow').style.display = qOrderSel.value==='rand' ? '' : 'none'; };
   qOrderSel.addEventListener('change', syncRep); syncRep();
+  /* إظهار/إخفاء خيار التناوب حسب طريقة السحب */
+  const modeSel = ov.querySelector('#qsMode');
+  const syncRotateRow = ()=>{ ov.querySelector('#qsRotateRow').style.display = modeSel.value==='students' ? '' : 'none'; };
+  modeSel.addEventListener('change', syncRotateRow); syncRotateRow();
+  /* عند تغيير المادة: «بدون أسئلة» يخفي قوائم الأسئلة، وإلا تُملأ الدروس بالمادة المختارة */
+  const qSubjSel = ov.querySelector('#qsQSubj');
+  const qSrcSel = ov.querySelector('#qsQSrc');
+  const syncQSrc = ()=>{
+    const noQ = qSubjSel.value==='noq';
+    ov.querySelector('#qsQSrcRow').style.display = noQ ? 'none' : '';
+    ov.querySelector('#qsQOrderRow').style.display = noQ ? 'none' : '';
+    if(!noQ) qSrcSel.innerHTML = qsLessonOptsFor(qSubjSel.value);
+  };
+  qSubjSel.addEventListener('change', ()=>{ syncQSrc(); syncRep(); }); syncQSrc(); syncRep();
   ov.querySelector('#qsCancel').onclick=()=>ov.remove();
   ov.querySelector('#qsStart').onclick=async ()=>{
+    const mode = modeSel.value;
     const method = ov.querySelector('#qsMethod').value;
+    const rotate = mode==='students' && ov.querySelector('#qsRotate').checked;
     const dir = ov.querySelector('#qsDir').value;
     const regW = +ov.querySelector('#qsWeek').value;
     const crit = +ov.querySelector('#qsCrit').value;
@@ -3093,25 +3172,54 @@ function qsOpenSettings(cls,w,li,box){
     correctVal = Math.max(0,Math.min(7,correctVal));
     const qOrder = qOrderSel.value;
     const qRepeat = ov.querySelector('#qsQRepeat').value;
+    const noQ = qSubjSel.value==='noq';
+    const key = noQ ? curKey : (qSrcSel.value || curKey);
     const startBtn = ov.querySelector('#qsStart');
     startBtn.disabled=true; startBtn.textContent='جارٍ التحضير…';
     await fetchClassMarks(cls);
-    if(!(groupsCache[cls] && groupsCache[cls].loaded)) fetchGroups(cls);
-    const key = lessonKey(w,li);
-    await fetchCustomQuestions(cls,key);
-    const pool = ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
-    const n = ROSTERS[cls].students.length;
-    let queue = Array.from({length:n},(_,i)=>i);
-    if(method==='name') queue.sort((a,b)=>ROSTERS[cls].students[a].localeCompare(ROSTERS[cls].students[b],'ar'));
-    else if(method==='total') queue.sort((a,b)=>studentValue(cls,regW,b,'total')-studentValue(cls,regW,a,'total'));
-    else if(method.startsWith('col')) queue.sort((a,b)=>studentValue(cls,regW,b,method.slice(3))-studentValue(cls,regW,a,method.slice(3)));
-    if(method==='random'){
-      for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+    if(mode==='groups' && !(groupsCache[cls] && groupsCache[cls].defs && groupsCache[cls].defs.length)){
+      startBtn.disabled=false; startBtn.textContent='بدء';
+      alert('لا توجد مجموعات في هذا الفصل بعد — أنشئها من تبويب درجات المجموعات أولاً.');
+      return;
     }
-    else if(dir==='asc') queue.reverse();
+    let pool = [];
+    if(!noQ){
+      await fetchCustomQuestions(cls,key);
+      pool = ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
+    }
+    let queue = [];
+    if(mode==='groups'){
+      queue = groupsCache[cls].defs.map(d=>d.id);
+      if(method==='name') queue.sort((a,b)=>groupsCache[cls].defs.find(d=>d.id===a).name.localeCompare(groupsCache[cls].defs.find(d=>d.id===b).name,'ar'));
+      else if(method==='total') queue.sort((a,b)=>groupTotal(cls,b,regW)-groupTotal(cls,a,regW));
+      if(method==='random'){
+        for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
+      }
+      else if(dir==='asc') queue.reverse();
+    } else if(rotate){
+      /* تناوب: الجولة 1 أول عضو من كل مجموعة، الجولة 2 ثاني عضو… ثم غير المنتمين في النهاية */
+      const defs = groupsCache[cls] && groupsCache[cls].defs ? groupsCache[cls].defs : [];
+      const inGroup = new Set();
+      const maxLen = defs.reduce((m,d)=>Math.max(m,d.members.length),0);
+      for(let round=0; round<maxLen; round++){
+        defs.forEach(d=>{ if(round<d.members.length){ queue.push(d.members[round]); inGroup.add(d.members[round]); } });
+      }
+      ROSTERS[cls].students.forEach((_,i)=>{ if(!inGroup.has(i)) queue.push(i); });
+    } else {
+      const n = ROSTERS[cls].students.length;
+      queue = Array.from({length:n},(_,i)=>i);
+      if(method==='name') queue.sort((a,b)=>ROSTERS[cls].students[a].localeCompare(ROSTERS[cls].students[b],'ar'));
+      else if(method==='total') queue.sort((a,b)=>studentValue(cls,regW,b,'total')-studentValue(cls,regW,a,'total'));
+      else if(method.startsWith('col')) queue.sort((a,b)=>studentValue(cls,regW,b,method.slice(3))-studentValue(cls,regW,a,method.slice(3)));
+      if(method==='random'){
+        for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
+      }
+      else if(dir==='asc') queue.reverse();
+    }
     ov.remove();
     quizSession = {cls, w:regW, li, key, crit, correctVal, dir, queue, idx:0,
-      qOrder, qRepeat, usedQ:[], seqPos:0, pool,
+      mode, noQ, rotate, qOrder, qRepeat, usedQ:[], seqPos:0, pool,
       cur:{stuId:null, qItem:null, answered:false, selectedCh:null}, notice:'', box};
     qsBuildPanel();
     qsNextTurn();
@@ -3163,10 +3271,15 @@ function qsDraw(s){
   s.usedQ.push(i);
   return pool[i];
 }
-/* تسجيل درجة الطالب (نفس مسار pickerNext للطلاب) */
+/* تسجيل درجة الطالب (نفس مسار pickerNext للطلاب) أو نقاط المجموعة (نفس مسار pickerNext للمجموعات) */
 async function qsRecord(s, v, kind){
   if(kind==='good') pkSndGood(); else pkSndBad();
-  const id = s.cur.stuId;
+  const id = s.cur.stuId; /* في وضع المجموعات: معرف المجموعة */
+  if(s.mode==='groups'){
+    try{ await addGroupPoints(s.cls, id, s.w, v>=5?5:(v<=0?-5:0)); }catch(e){}
+    renderGroups();
+    return;
+  }
   const store = marksCache[s.cls].data;
   if(!store[s.w]) store[s.w]={};
   if(!store[s.w][id]) store[s.w][id]={};
@@ -3175,11 +3288,11 @@ async function qsRecord(s, v, kind){
   syncGroupFromStudent(s.cls,s.w,id,s.crit);
   if(document.getElementById('sec-sheets').classList.contains('active')) renderSheet();
 }
-/* الانتقال لطالب جديد من الـqueue مع سؤال جديد */
+/* الانتقال لطالب/مجموعة جديدة من الـqueue مع سؤال جديد (إلا في وضع «بدون أسئلة») */
 function qsNextTurn(){
   const s = quizSession; if(!s) return;
   if(s.idx >= s.queue.length){ qsRenderDone(); return; }
-  s.cur = {stuId: s.queue[s.idx++], qItem: qsDraw(s), answered:false, selectedCh:null};
+  s.cur = {stuId: s.queue[s.idx++], qItem: s.noQ ? null : qsDraw(s), answered:false, selectedCh:null};
   qsRenderTurn();
 }
 function qsRenderDone(){
@@ -3200,9 +3313,25 @@ function qsRenderTurn(){
   const body = s.box.querySelector('#qsBody'); if(!body) return;
   const c = s.cur;
   const it = c.qItem;
-  const name = ROSTERS[s.cls].students[c.stuId];
+  const isGrp = s.mode==='groups';
+  let name, sub='';
+  if(isGrp){
+    const def = groupsCache[s.cls].defs.find(d=>d.id===c.stuId);
+    name = def ? def.name : '';
+    if(def && def.members.length){
+      sub = def.members.map(si=>ROSTERS[s.cls].students[si] + (def.leader===si?' (القائد)':'')).join('، ');
+    }
+  } else {
+    name = ROSTERS[s.cls].students[c.stuId];
+  }
   let qHtml = '';
-  if(it){
+  if(s.noQ){
+    /* «بدون أسئلة»: أزرار التقييم مباشرة دون لوحة سؤال */
+    qHtml = `<div class="qsMain" id="qsMain">
+        <button class="pbtn2" id="qsGood">✔ إجابة صحيحة (+${s.correctVal})</button>
+        <button class="pbtn2 danger" id="qsBad">✖ إجابة خاطئة (0)</button>
+      </div>`;
+  } else if(it){
     if(it.t==='mcq'){
       qHtml = `<div class="qsQ">${escH(it.q)}</div>
         <div class="qChoices">${it.c.map((ch,ci)=>`<button class="qCh qsCh" data-ci="${ci}">${escH(ch)}</button>`).join('')}</div>
@@ -3221,14 +3350,15 @@ function qsRenderTurn(){
   }
   body.innerHTML = `
     <div class="qsName">${escH(name)}</div>
-    <div class="qsCount">الطالب ${s.idx} من ${s.queue.length}</div>
+    ${sub?`<div class="qsCount" style="font-size:.8rem">${escH(sub)}</div>`:''}
+    <div class="qsCount">${isGrp?'المجموعة':'الطالب'} ${s.idx} من ${s.queue.length}</div>
     ${s.notice?`<div style="text-align:center"><span class="qsNotice">${s.notice}</span></div>`:''}
     ${qHtml}
     <div class="qsTools" id="qsTools">
-      <button class="pbtn2 ghost" id="qsChQ">🔄 تغيير السؤال تلقائياً</button>
-      <button class="pbtn2 ghost" id="qsChS">👤 تغيير الطالب تلقائياً</button>
-      <button class="pbtn2 ghost" id="qsPickQ">📄 التغيير لسؤال معين</button>
-      <button class="pbtn2 ghost" id="qsPickS">🧑 التغيير لطالب معين</button>
+      ${s.noQ?'':'<button class="pbtn2 ghost" id="qsChQ">🔄 تغيير السؤال تلقائياً</button>'}
+      <button class="pbtn2 ghost" id="qsChS">👤 ${isGrp?'تغيير المجموعة تلقائياً':'تغيير الطالب تلقائياً'}</button>
+      ${s.noQ?'':'<button class="pbtn2 ghost" id="qsPickQ">📄 التغيير لسؤال معين</button>'}
+      <button class="pbtn2 ghost" id="qsPickS">🧑 ${isGrp?'التغيير لمجموعة معينة':'التغيير لطالب معين'}</button>
     </div>
     <div id="qsPickRow" style="display:none">
       <input id="qsPickInp" placeholder="ابدأ بالكتابة ثم اختر من القائمة…" autocomplete="off" style="width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px">
@@ -3280,7 +3410,8 @@ function qsRenderTurn(){
   const pickRow = body.querySelector('#qsPickRow');
   const pickInp = body.querySelector('#qsPickInp');
   const pickList = body.querySelector('#qsPickList');
-  tools.querySelector('#qsChQ').onclick=()=>{ if(c.answered) return; c.qItem = qsDraw(s); c.selectedCh=null; qsRenderTurn(); };
+  const chQBtn = tools.querySelector('#qsChQ');
+  if(chQBtn) chQBtn.onclick=()=>{ if(c.answered) return; c.qItem = qsDraw(s); c.selectedCh=null; qsRenderTurn(); };
   tools.querySelector('#qsChS').onclick=()=>{
     if(c.answered) return;
     const rest = s.queue.slice(s.idx);
@@ -3289,7 +3420,9 @@ function qsRenderTurn(){
       s.queue.splice(s.queue.indexOf(pick), 1);
       s.cur.stuId = pick;
     } else {
-      const others = ROSTERS[s.cls].students.map((_,i)=>i).filter(i=>i!==c.stuId);
+      const others = isGrp
+        ? groupsCache[s.cls].defs.map(d=>d.id).filter(id2=>id2!==c.stuId)
+        : ROSTERS[s.cls].students.map((_,i)=>i).filter(i=>i!==c.stuId);
       if(others.length) s.cur.stuId = others[Math.floor(Math.random()*others.length)];
     }
     c.selectedCh = null;
@@ -3304,7 +3437,8 @@ function qsRenderTurn(){
     pickInp.value=''; pickInp.placeholder=ph; pickInp.focus();
     s._pickGet = getItems; s._pickOn = onPick;
   };
-  tools.querySelector('#qsPickQ').onclick=()=>{
+  const pickQBtn = tools.querySelector('#qsPickQ');
+  if(pickQBtn) pickQBtn.onclick=()=>{
     if(c.answered) return;
     openPick(()=>s.pool.map((it2,i)=>({label:it2.q, id:i})), it2=>{
       c.qItem = s.pool[it2.id]; c.selectedCh=null; qsRenderTurn();
@@ -3312,9 +3446,11 @@ function qsRenderTurn(){
   };
   tools.querySelector('#qsPickS').onclick=()=>{
     if(c.answered) return;
-    openPick(()=>ROSTERS[s.cls].students.map((st,i)=>({label:st, id:i})), it2=>{
+    openPick(()=>isGrp
+        ? groupsCache[s.cls].defs.map(d=>({label:d.name, id:d.id}))
+        : ROSTERS[s.cls].students.map((st,i)=>({label:st, id:i})), it2=>{
       s.cur.stuId = it2.id; c.selectedCh=null; qsRenderTurn(); /* نفس السؤال يبقى */
-    }, 'اكتب جزءاً من اسم الطالب…');
+    }, isGrp?'اكتب جزءاً من اسم المجموعة…':'اكتب جزءاً من اسم الطالب…');
   };
   body.querySelector('#qsPickBack').onclick=()=>{ pickRow.style.display='none'; tools.style.display=''; };
 }
@@ -3819,6 +3955,7 @@ async function renderLpSheet(cls, w, pane){
   if(!(marksCache[cls] && marksCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
     await fetchClassMarks(cls);
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
     await fetchExtraStudents(cls);
   }
   const students = ROSTERS[cls].students;
@@ -3848,7 +3985,9 @@ async function renderLpSheet(cls, w, pane){
   h += `</tr>`;
   order.forEach((si,r)=>{
     const rowFill = (w!=='avg') ? ` <button class="fillBtn" data-fillrow="${si}" title="تعميم درجة على كل معايير الطالب هذا الأسبوع">⤵</button>` : '';
-    h += `<tr><td>${r+1}</td><td class="name">${students[si]}${rowFill}</td>`;
+    const g = findGroupOf(cls,si);
+    const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
+    h += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}</td>`;
     for(let ci=0;ci<CRITERIA.length;ci++){
       if(w==='avg'){
         const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
