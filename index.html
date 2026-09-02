@@ -350,6 +350,23 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .modalCard textarea{width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; resize:vertical; line-height:1.8}
 @media (max-width:600px){ .cqTypes{flex-direction:column} }
 .weekcard.curWeek{border:2px solid var(--teal); box-shadow:0 0 0 4px rgba(63,111,106,.15), var(--shadow)}
+/* ====== جلسة الاختبار بالاختيار التلقائي داخل تبويب «اختبر معلوماتك» ====== */
+#qSession{margin:0 0 16px; border:2px solid var(--teal)}
+.qsTop{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px}
+.qsTitle{flex:1; font-weight:800; font-size:.95rem; color:var(--accent)}
+.qsName{font-size:1.6rem; font-weight:800; color:var(--accent); text-align:center; margin:8px 0 2px}
+.qsCount{text-align:center; font-size:.85rem; color:var(--muted, #777); margin-bottom:8px}
+.qsQ{font-size:1.2rem; font-weight:700; line-height:1.9; margin:10px 0}
+.qsCh.sel{outline:3px solid var(--teal); background:var(--teal-soft)}
+.qsMain{display:flex; justify-content:center; gap:10px; margin:14px 0; flex-wrap:wrap}
+.qsTools{display:flex; gap:8px; flex-wrap:wrap}
+.qsTools .pbtn2{font-size:.85rem}
+.qsNotice{font-size:.8rem; color:#b26a00; background:#fff4dd; border:1px solid #ecd9ae; border-radius:8px; padding:4px 10px; margin:6px 0; display:inline-block}
+#qSession:fullscreen{background:#fff; padding:24px; overflow:auto}
+#qSession:fullscreen .qsName{font-size:2.2rem}
+#qSession:fullscreen .qsQ{font-size:1.6rem}
+#qSession:fullscreen .qCh{font-size:1.2rem; padding:14px 18px}
+#qSession:fullscreen .qAns{font-size:1.3rem}
 </style>
 </head>
 <body>
@@ -2361,7 +2378,7 @@ function pkFailFx(ov,skip){
 
 function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
   const cls = clsO || (mode==='students' ? curSheet : curGroup);
-  const w = (wO!==undefined && wO!==null) ? wO : (mode==='students' ? +sheetSel.value : +groupWeekSel.value);
+  let w = (wO!==undefined && wO!==null) ? wO : (mode==='students' ? +sheetSel.value : +groupWeekSel.value);
   if(mode==='students' && clsO===undefined && sheetSel.value==='avg'){ alert('اختر أسبوعاً محدداً أولاً (وليس المتوسط).'); return; }
   if(mode==='groups' && !(groupsCache[cls] && groupsCache[cls].defs && groupsCache[cls].defs.length)){ alert('لا توجد مجموعات في هذا الفصل بعد.'); return; }
   pre = pre || {};
@@ -2388,12 +2405,19 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
         ${mode==='students' ? CRITERIA.map((c,i)=>`<option value="col${i}"${pre.method==='col'+i?' selected':''}>بحسب درجة: ${c}</option>`).join('') : ''}
         <option value="manual"${pre.method==='manual'?' selected':''}>${mode==='students'?'طالب محدد بعينه':'مجموعة محددة بعينها'}</option>
       </select></div>
+    <div class="frow"><label>اتجاه الترتيب</label>
+      <select id="pkDir">
+        <option value="desc"${pre.dir!=='asc'?' selected':''}>تنازلي (يبدأ من أ / الأعلى)</option>
+        <option value="asc"${pre.dir==='asc'?' selected':''}>تصاعدي (يبدأ من ي / الأدنى)</option>
+      </select></div>
     <div class="frow" id="pkManualRow" style="display:none">
       <label>${mode==='students'?'اختر الطالب':'اختر المجموعة'} — اكتب جزءاً من الاسم ثم اختره من القائمة</label>
       <input id="pkManual" placeholder="ابدأ بكتابة الاسم…" autocomplete="off">
       <div class="ddList" id="pkManualList" style="display:none"></div>
     </div>
     <div class="frow"><label>المعيار الذي تُسجَّل فيه الدرجة</label><select id="pkCrit">${critOpts}</select></div>
+    <div class="frow"><label>الأسبوع الذي تُسجَّل فيه الدرجة</label>
+      <select id="pkWeek">${WEEKS.map(x=>`<option value="${x}"${x===w?' selected':''}>${weekLabel(x)}</option>`).join('')}</select></div>
     <div class="frow"><label>قيمة درجة الإجابة الصحيحة</label><input id="pkVal" type="number" min="0" max="7" value="${pre.val!==undefined?pre.val:5}"></div>
     <div class="frow"><label>وقت الإجابة بالثواني (اتركه فارغاً = بدون توقيت)</label><input id="pkTime" type="number" min="1" placeholder="بدون توقيت" value="${pre.time?pre.time:''}"></div>
     <div class="frow"><label>الأسئلة أثناء الاختيار</label>
@@ -2408,6 +2432,14 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
         <option value="mcq"${pre.qtype==='mcq'?' selected':''}>بخيارات فقط</option>
         <option value="open"${pre.qtype==='open'?' selected':''}>بدون خيارات (المعلم يقيّم)</option>
         <option value="both"${!pre.qtype||pre.qtype==='both'?' selected':''}>كليهما</option>
+      </select></div>
+      <div class="frow"><label>ترتيب الأسئلة</label><select id="pkQOrder">
+        <option value="seq"${pre.qorder!=='rand'?' selected':''}>بالترتيب</option>
+        <option value="rand"${pre.qorder==='rand'?' selected':''}>عشوائي</option>
+      </select></div>
+      <div class="frow" id="pkQRepeatRow" style="display:none"><label>إعادة الأسئلة</label><select id="pkQRepeat">
+        <option value="norepeat"${pre.qrepeat!=='repeat'?' selected':''}>بدون إعادة حتى تنتهي كل الأسئلة</option>
+        <option value="repeat"${pre.qrepeat==='repeat'?' selected':''}>مع إمكانية إعادة الأسئلة</option>
       </select></div>
     </div>`:'<div class="note" style="margin-bottom:8px">لا توجد أسئلة مضافة لدروس هذا الفصل بعد.</div>'}
     <div class="pkBtns"><button class="pbtn2" id="pkStart">بدء</button><button class="pbtn2 ghost" id="pkCancel">إلغاء</button></div>`);
@@ -2435,9 +2467,20 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
     qOnSel.addEventListener('change', syncQOpts);
     syncQOpts();
   }
+  const qOrderSel = ov.querySelector('#pkQOrder');
+  const qRepeatRow = ov.querySelector('#pkQRepeatRow');
+  if(qOrderSel && qRepeatRow){
+    const syncQRepeat = ()=>{ qRepeatRow.style.display = qOrderSel.value==='rand' ? '' : 'none'; };
+    qOrderSel.addEventListener('change', syncQRepeat);
+    syncQRepeat();
+  }
   ov.querySelector('#pkCancel').onclick=()=>ov.remove();
   ov.querySelector('#pkStart').onclick=()=>{
     const method = methodSel.value;
+    const dirEl = ov.querySelector('#pkDir');
+    const dir = dirEl ? dirEl.value : 'desc';
+    const wkEl = ov.querySelector('#pkWeek');
+    if(wkEl) w = +wkEl.value; /* الأسبوع الذي تُسجَّل فيه الدرجة */
     const crit = +ov.querySelector('#pkCrit').value;
     let correctVal = parseFloat(ov.querySelector('#pkVal').value); if(isNaN(correctVal)) correctVal=5;
     correctVal = Math.max(0,Math.min(7,correctVal));
@@ -2462,13 +2505,17 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
     if(method==='random'){
       for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
     }
+    else if(method!=='manual' && dir==='asc') queue.reverse(); /* تصاعدي: عكس الترتيب الحالي */
     let quiz = null;
     if(qOnSel && qOnSel.value==='on' && qzLessons.length){
       const qSrcEl = ov.querySelector('#pkQSrc');
       const qTypeEl = ov.querySelector('#pkQType');
-      quiz = {src: qSrcEl ? qSrcEl.value : qzDefSrc, type: qTypeEl ? qTypeEl.value : 'both', used: []};
+      const qOrderEl = ov.querySelector('#pkQOrder');
+      const qRepeatEl = ov.querySelector('#pkQRepeat');
+      quiz = {src: qSrcEl ? qSrcEl.value : qzDefSrc, type: qTypeEl ? qTypeEl.value : 'both', used: [],
+        order: qOrderEl ? qOrderEl.value : 'rand', repeat: qRepeatEl ? qRepeatEl.value : 'norepeat'};
     }
-    picker = {mode, cls, w, queue, idx:0, crit, correctVal, time, timerId:null, manual:method==='manual', quiz};
+    picker = {mode, cls, w, queue, idx:0, crit, correctVal, time, timerId:null, manual:method==='manual', quiz, dir};
     ov.remove();
     pickerNext();
   };
@@ -2526,8 +2573,9 @@ function pickerNext(){
   if(picker.idx >= picker.queue.length){
     const p = picker;
     if(p.manual){
-      const pre={method:'manual', crit:p.crit, val:p.correctVal, time:p.time,
-        qon:p.quiz?'on':'off', qsrc:p.quiz?p.quiz.src:undefined, qtype:p.quiz?p.quiz.type:undefined};
+      const pre={method:'manual', crit:p.crit, val:p.correctVal, time:p.time, dir:p.dir,
+        qon:p.quiz?'on':'off', qsrc:p.quiz?p.quiz.src:undefined, qtype:p.quiz?p.quiz.type:undefined,
+        qorder:p.quiz?p.quiz.order:undefined, qrepeat:p.quiz?p.quiz.repeat:undefined};
       const md=p.mode, c=p.cls, ww=p.w;
       picker=null;
       openPicker(md,c,ww,pre);
@@ -2956,7 +3004,8 @@ async function renderQuiz(cls,w,li,box){
   const base=(QUIZZES[cls]||{})[key]||[];
   const paint=()=>{
     const qs=base.concat(cqList(cls,key));
-    box.innerHTML = `<div class="quizBar"><button class="pbtn2" id="qAddBtn">➕ إضافة سؤال</button><span class="syncWrap"><button class="pbtn2 ghost" id="qWsBtn">🖨️ تصدير ورقة عمل</button></span></div>` +
+    const oldSession = box.querySelector('#qSession'); /* الحفاظ على لوحة الجلسة إن كانت مفتوحة */
+    box.innerHTML = `<div class="quizBar"><button class="pbtn2" id="qAddBtn">➕ إضافة سؤال</button><span class="syncWrap"><button class="pbtn2 ghost" id="qWsBtn">🖨️ تصدير ورقة عمل</button></span><button class="pbtn2" id="qPlayBtn">🎯 اختبار بالاختيار التلقائي</button></div>` +
       (qs.length ? qs.map((it,qi)=>{
         const tag = it._cid!==undefined ? ` <span class="qBadge">أضافها المعلم</span><button class="qDel qEdit" data-cid="${it._cid}" title="تعديل السؤال">✏️</button><button class="qDel" data-cid="${it._cid}" title="حذف السؤال">🗑️</button>` : '';
         if(it.t==='mcq') return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
@@ -2967,6 +3016,7 @@ async function renderQuiz(cls,w,li,box){
       }).join('') : '<div class="ddEmpty" style="margin-top:14px">لا توجد أسئلة مضافة لهذا الدرس بعد.</div>');
     box.querySelector('#qAddBtn').onclick=()=>openAddQuestionModal(cls,w,li,()=>paint());
     box.querySelector('#qWsBtn').onclick=e=>{ e.stopPropagation(); wsToggleMenu(cls,w,li,box); };
+    box.querySelector('#qPlayBtn').onclick=()=>qsOpenSettings(cls,w,li,box);
     box.querySelectorAll('.qEdit').forEach(b=>b.onclick=()=>{
       const it = cqList(cls,key).find(x=>String(x._cid)===String(b.dataset.cid));
       if(it) openAddQuestionModal(cls,w,li,()=>paint(),it);
@@ -2989,12 +3039,284 @@ async function renderQuiz(cls,w,li,box){
       try{ await deleteCustomQuestion(cls,key,b.dataset.cid); paint(); }
       catch(e){ alert('تعذر الحذف — تحقق من الاتصال.'); }
     });
+    if(oldSession) box.insertBefore(oldSession, box.firstChild); /* إبقاء لوحة الجلسة في الأعلى */
   };
   paint(); /* عرض فوري (الجاهزة + الكاش) */
   if(!(CUSTOMQ[cls] && CUSTOMQ[cls][key])){
     await fetchCustomQuestions(cls,key);
     if(box.isConnected) paint(); /* إلحاق أسئلة المعلم بعد التحميل */
   }
+}
+
+/* ====== جلسة «اختبار بالاختيار التلقائي» داخل تبويب اختبر معلوماتك ====== */
+let quizSession = null;
+/* نافذة إعدادات الجلسة (طلاب فقط، مصدر الأسئلة = درس التبويب الحالي، النوع = كليهما) */
+function qsOpenSettings(cls,w,li,box){
+  const critOpts = CRITERIA.map((c,i)=>`<option value="${i}"${i===2?' selected':''}>${c}</option>`).join('');
+  const ov = openModal(`
+    <h3>🎯 اختبار بالاختيار التلقائي — ${ROSTERS[cls].class}</h3>
+    <div class="frow"><label>طريقة الاختيار</label>
+      <select id="qsMethod">
+        <option value="random">عشوائي</option>
+        <option value="name">ترتيب اسمي</option>
+        <option value="total">بحسب مجمل الدرجات</option>
+        ${CRITERIA.map((c,i)=>`<option value="col${i}">بحسب درجة: ${c}</option>`).join('')}
+      </select></div>
+    <div class="frow"><label>اتجاه الترتيب</label>
+      <select id="qsDir">
+        <option value="desc">تنازلي (يبدأ من أ / الأعلى)</option>
+        <option value="asc">تصاعدي (يبدأ من ي / الأدنى)</option>
+      </select></div>
+    <div class="frow"><label>الأسبوع الذي تُسجَّل فيه الدرجة</label>
+      <select id="qsWeek">${WEEKS.map(x=>`<option value="${x}"${x===w?' selected':''}>${weekLabel(x)}</option>`).join('')}</select></div>
+    <div class="frow"><label>المعيار الذي تُسجَّل فيه الدرجة</label><select id="qsCrit">${critOpts}</select></div>
+    <div class="frow"><label>قيمة درجة الإجابة الصحيحة</label><input id="qsVal" type="number" min="0" max="7" value="5"></div>
+    <div class="frow"><label>ترتيب الأسئلة</label><select id="qsQOrder">
+      <option value="seq">بالترتيب</option>
+      <option value="rand">عشوائي</option>
+    </select></div>
+    <div class="frow" id="qsQRepeatRow" style="display:none"><label>إعادة الأسئلة</label><select id="qsQRepeat">
+      <option value="norepeat">بدون إعادة حتى تنتهي كل الأسئلة</option>
+      <option value="repeat">مع إمكانية إعادة الأسئلة</option>
+    </select></div>
+    <div class="pkBtns"><button class="pbtn2" id="qsStart">بدء</button><button class="pbtn2 ghost" id="qsCancel">إلغاء</button></div>`);
+  const qOrderSel = ov.querySelector('#qsQOrder');
+  const syncRep = ()=>{ ov.querySelector('#qsQRepeatRow').style.display = qOrderSel.value==='rand' ? '' : 'none'; };
+  qOrderSel.addEventListener('change', syncRep); syncRep();
+  ov.querySelector('#qsCancel').onclick=()=>ov.remove();
+  ov.querySelector('#qsStart').onclick=async ()=>{
+    const method = ov.querySelector('#qsMethod').value;
+    const dir = ov.querySelector('#qsDir').value;
+    const regW = +ov.querySelector('#qsWeek').value;
+    const crit = +ov.querySelector('#qsCrit').value;
+    let correctVal = parseFloat(ov.querySelector('#qsVal').value); if(isNaN(correctVal)) correctVal=5;
+    correctVal = Math.max(0,Math.min(7,correctVal));
+    const qOrder = qOrderSel.value;
+    const qRepeat = ov.querySelector('#qsQRepeat').value;
+    const startBtn = ov.querySelector('#qsStart');
+    startBtn.disabled=true; startBtn.textContent='جارٍ التحضير…';
+    await fetchClassMarks(cls);
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) fetchGroups(cls);
+    const key = lessonKey(w,li);
+    await fetchCustomQuestions(cls,key);
+    const pool = ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
+    const n = ROSTERS[cls].students.length;
+    let queue = Array.from({length:n},(_,i)=>i);
+    if(method==='name') queue.sort((a,b)=>ROSTERS[cls].students[a].localeCompare(ROSTERS[cls].students[b],'ar'));
+    else if(method==='total') queue.sort((a,b)=>studentValue(cls,regW,b,'total')-studentValue(cls,regW,a,'total'));
+    else if(method.startsWith('col')) queue.sort((a,b)=>studentValue(cls,regW,b,method.slice(3))-studentValue(cls,regW,a,method.slice(3)));
+    if(method==='random'){
+      for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
+    }
+    else if(dir==='asc') queue.reverse();
+    ov.remove();
+    quizSession = {cls, w:regW, li, key, crit, correctVal, dir, queue, idx:0,
+      qOrder, qRepeat, usedQ:[], seqPos:0, pool,
+      cur:{stuId:null, qItem:null, answered:false, selectedCh:null}, notice:'', box};
+    qsBuildPanel();
+    qsNextTurn();
+  };
+}
+/* بناء لوحة الجلسة في أعلى تبويب «اختبر معلوماتك» */
+function qsBuildPanel(){
+  const s = quizSession; if(!s) return;
+  let panel = s.box.querySelector('#qSession');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'qSession';
+    panel.className = 'weekcard';
+    s.box.insertBefore(panel, s.box.firstChild);
+  }
+  panel.innerHTML = `
+    <div class="qsTop">
+      <span class="qsTitle">🎯 اختبار — ${ROSTERS[s.cls].class} — تُسجَّل في: ${weekLabel(s.w)} — المعيار: ${CRITERIA[s.crit]}</span>
+      <button class="pbtn2 ghost" id="qsFull" style="font-size:.85rem">⛶ ملء الشاشة</button>
+      <button class="pbtn2 danger" id="qsEnd" style="font-size:.85rem">✖ إنهاء</button>
+    </div>
+    <div id="qsBody"></div>`;
+  panel.querySelector('#qsEnd').onclick=()=>qsEnd();
+  panel.querySelector('#qsFull').onclick=()=>{
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else if(panel.requestFullscreen) panel.requestFullscreen();
+  };
+}
+function qsEnd(){
+  const s = quizSession; if(!s) return;
+  if(document.fullscreenElement) document.exitFullscreen();
+  const panel = s.box.querySelector('#qSession');
+  if(panel) panel.remove();
+  quizSession = null;
+}
+/* سحب سؤال حسب إعدادات الترتيب/الإعادة */
+function qsDraw(s){
+  const pool = s.pool;
+  if(!pool.length) return null;
+  s.notice = '';
+  if(s.qOrder==='seq'){
+    if(s.seqPos>=pool.length) s.seqPos = 0; /* عند النفاد يُعاد من البداية */
+    return pool[s.seqPos++];
+  }
+  if(s.qRepeat==='repeat') return pool[Math.floor(Math.random()*pool.length)];
+  let avail = pool.map((_,i)=>i).filter(i=>!s.usedQ.includes(i));
+  if(!avail.length){ s.usedQ=[]; s.notice='انتهت الأسئلة — أُعيدت من جديد'; avail = pool.map((_,i)=>i); }
+  const i = avail[Math.floor(Math.random()*avail.length)];
+  s.usedQ.push(i);
+  return pool[i];
+}
+/* تسجيل درجة الطالب (نفس مسار pickerNext للطلاب) */
+async function qsRecord(s, v, kind){
+  if(kind==='good') pkSndGood(); else pkSndBad();
+  const id = s.cur.stuId;
+  const store = marksCache[s.cls].data;
+  if(!store[s.w]) store[s.w]={};
+  if(!store[s.w][id]) store[s.w][id]={};
+  store[s.w][id][s.crit]=v;
+  try{ await pushMark(s.cls,s.w,id,s.crit,v); }catch(e){}
+  syncGroupFromStudent(s.cls,s.w,id,s.crit);
+  if(document.getElementById('sec-sheets').classList.contains('active')) renderSheet();
+}
+/* الانتقال لطالب جديد من الـqueue مع سؤال جديد */
+function qsNextTurn(){
+  const s = quizSession; if(!s) return;
+  if(s.idx >= s.queue.length){ qsRenderDone(); return; }
+  s.cur = {stuId: s.queue[s.idx++], qItem: qsDraw(s), answered:false, selectedCh:null};
+  qsRenderTurn();
+}
+function qsRenderDone(){
+  const s = quizSession; if(!s) return;
+  const body = s.box.querySelector('#qsBody'); if(!body) return;
+  body.innerHTML = `<div style="text-align:center;padding:18px">
+    <div style="font-size:1.5rem;font-weight:800;color:var(--accent)">انتهت الجولة ✔</div>
+    <div class="qsMain">
+      <button class="pbtn2" id="qsAgain">بدء جولة جديدة</button>
+      <button class="pbtn2 ghost" id="qsClose">إغلاق</button>
+    </div></div>`;
+  body.querySelector('#qsAgain').onclick=()=>{ const c=s.cls, w=s.w, li=s.li, bx=s.box; qsEnd(); qsOpenSettings(c,w,li,bx); };
+  body.querySelector('#qsClose').onclick=()=>qsEnd();
+}
+/* عرض دور الطالب الحالي: الاسم + السؤال + أزرار التفاعل */
+function qsRenderTurn(){
+  const s = quizSession; if(!s) return;
+  const body = s.box.querySelector('#qsBody'); if(!body) return;
+  const c = s.cur;
+  const it = c.qItem;
+  const name = ROSTERS[s.cls].students[c.stuId];
+  let qHtml = '';
+  if(it){
+    if(it.t==='mcq'){
+      qHtml = `<div class="qsQ">${escH(it.q)}</div>
+        <div class="qChoices">${it.c.map((ch,ci)=>`<button class="qCh qsCh" data-ci="${ci}">${escH(ch)}</button>`).join('')}</div>
+        <div class="qsMain"><button class="pbtn2" id="qsConfirm" style="font-size:1.15rem;padding:12px 34px">✅ تأكيد الإجابة</button></div>`;
+    } else {
+      qHtml = `<div class="qsQ">${escH(it.q)}</div>
+        <div class="qAns" id="qsAns" style="display:none">${escH(it.a)}</div>
+        <div class="qsMain" id="qsMain"><button class="pbtn2" id="qsShow" style="font-size:1.15rem;padding:12px 34px">👁 إظهار الإجابة</button></div>`;
+    }
+  } else {
+    qHtml = `<div class="ddEmpty">لا توجد أسئلة لهذا الدرس — قيّم إجابة الطالب مباشرة:</div>
+      <div class="qsMain" id="qsMain">
+        <button class="pbtn2" id="qsGood">✔ جواب صحيح (+${s.correctVal})</button>
+        <button class="pbtn2 danger" id="qsBad">✖ جواب خاطئ (0)</button>
+      </div>`;
+  }
+  body.innerHTML = `
+    <div class="qsName">${escH(name)}</div>
+    <div class="qsCount">الطالب ${s.idx} من ${s.queue.length}</div>
+    ${s.notice?`<div style="text-align:center"><span class="qsNotice">${s.notice}</span></div>`:''}
+    ${qHtml}
+    <div class="qsTools" id="qsTools">
+      <button class="pbtn2 ghost" id="qsChQ">🔄 تغيير السؤال تلقائياً</button>
+      <button class="pbtn2 ghost" id="qsChS">👤 تغيير الطالب تلقائياً</button>
+      <button class="pbtn2 ghost" id="qsPickQ">📄 التغيير لسؤال معين</button>
+      <button class="pbtn2 ghost" id="qsPickS">🧑 التغيير لطالب معين</button>
+    </div>
+    <div id="qsPickRow" style="display:none">
+      <input id="qsPickInp" placeholder="ابدأ بالكتابة ثم اختر من القائمة…" autocomplete="off" style="width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px">
+      <div class="ddList" id="qsPickList" style="display:none"></div>
+      <div style="margin-top:6px"><button class="pbtn2 ghost" id="qsPickBack" style="font-size:.85rem">رجوع</button></div>
+    </div>`;
+  /* تفاعل السؤال */
+  const nextBtnHtml = `<button class="pbtn2" id="qsNext" style="font-size:1.15rem;padding:12px 34px">⏭ التالي</button>`;
+  const showNext = ()=>{
+    const main = body.querySelector('.qsMain');
+    if(main) main.innerHTML = nextBtnHtml;
+    body.querySelector('#qsNext').onclick=()=>qsNextTurn();
+  };
+  if(it && it.t==='mcq'){
+    body.querySelectorAll('.qsCh').forEach(b=>b.onclick=()=>{
+      if(c.answered) return;
+      c.selectedCh = +b.dataset.ci;
+      body.querySelectorAll('.qsCh').forEach(x=>x.classList.toggle('sel', x===b));
+    });
+    body.querySelector('#qsConfirm').onclick=async ()=>{
+      if(c.answered) return;
+      if(c.selectedCh===null){ const ch=body.querySelector('.qChoices'); ch.style.outline='2px dashed #d32f2f'; setTimeout(()=>ch.style.outline='',900); return; }
+      c.answered = true;
+      const ok = c.selectedCh===it.a;
+      body.querySelectorAll('.qsCh').forEach(x=>{
+        x.disabled = true;
+        if(+x.dataset.ci===it.a) x.classList.add('ok');
+      });
+      if(!ok) body.querySelector(`.qsCh[data-ci="${c.selectedCh}"]`).classList.add('bad');
+      await qsRecord(s, ok?s.correctVal:0, ok?'good':'bad');
+      showNext();
+    };
+  } else if(it){
+    body.querySelector('#qsShow').onclick=()=>{
+      body.querySelector('#qsAns').style.display='block';
+      body.querySelector('#qsMain').innerHTML = `
+        <button class="pbtn2" id="qsGood">✔ جواب صحيح (+${s.correctVal})</button>
+        <button class="pbtn2 danger" id="qsBad">✖ جواب خاطئ (0)</button>`;
+      bindGrade();
+    };
+  }
+  function bindGrade(){
+    body.querySelector('#qsGood').onclick=async ()=>{ if(c.answered) return; c.answered=true; await qsRecord(s,s.correctVal,'good'); showNext(); };
+    body.querySelector('#qsBad').onclick=async ()=>{ if(c.answered) return; c.answered=true; await qsRecord(s,0,'bad'); showNext(); };
+  }
+  if(!it) bindGrade();
+  /* صف الأزرار السفلية */
+  const tools = body.querySelector('#qsTools');
+  const pickRow = body.querySelector('#qsPickRow');
+  const pickInp = body.querySelector('#qsPickInp');
+  const pickList = body.querySelector('#qsPickList');
+  tools.querySelector('#qsChQ').onclick=()=>{ if(c.answered) return; c.qItem = qsDraw(s); c.selectedCh=null; qsRenderTurn(); };
+  tools.querySelector('#qsChS').onclick=()=>{
+    if(c.answered) return;
+    const rest = s.queue.slice(s.idx);
+    if(rest.length){
+      const pick = rest[Math.floor(Math.random()*rest.length)];
+      s.queue.splice(s.queue.indexOf(pick), 1);
+      s.cur.stuId = pick;
+    } else {
+      const others = ROSTERS[s.cls].students.map((_,i)=>i).filter(i=>i!==c.stuId);
+      if(others.length) s.cur.stuId = others[Math.floor(Math.random()*others.length)];
+    }
+    c.selectedCh = null;
+    qsRenderTurn(); /* نفس السؤال يبقى */
+  };
+  if(!pickInp._qsBound){ /* إرفاق الإكمال التلقائي مرة واحدة مع تفويض ديناميكي */
+    pickInp._qsBound = true;
+    attachAutocomplete(pickInp, pickList, ()=>s._pickGet?s._pickGet():[], it2=>{ if(s._pickOn) s._pickOn(it2); });
+  }
+  const openPick = (getItems, onPick, ph)=>{
+    tools.style.display='none'; pickRow.style.display='';
+    pickInp.value=''; pickInp.placeholder=ph; pickInp.focus();
+    s._pickGet = getItems; s._pickOn = onPick;
+  };
+  tools.querySelector('#qsPickQ').onclick=()=>{
+    if(c.answered) return;
+    openPick(()=>s.pool.map((it2,i)=>({label:it2.q, id:i})), it2=>{
+      c.qItem = s.pool[it2.id]; c.selectedCh=null; qsRenderTurn();
+    }, 'اكتب جزءاً من نص السؤال…');
+  };
+  tools.querySelector('#qsPickS').onclick=()=>{
+    if(c.answered) return;
+    openPick(()=>ROSTERS[s.cls].students.map((st,i)=>({label:st, id:i})), it2=>{
+      s.cur.stuId = it2.id; c.selectedCh=null; qsRenderTurn(); /* نفس السؤال يبقى */
+    }, 'اكتب جزءاً من اسم الطالب…');
+  };
+  body.querySelector('#qsPickBack').onclick=()=>{ pickRow.style.display='none'; tools.style.display=''; };
 }
 
 /* ====== تصدير ورقة عمل من أسئلة الدرس ====== */
