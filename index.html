@@ -399,6 +399,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
     <button class="maintab" data-sec="sec-curriculum">توزيع المنهج</button>
     <button class="maintab" data-sec="sec-sheets">الكشوف الأسبوعية</button>
     <button class="maintab" data-sec="sec-groups">نظام المجموعات</button>
+    <button class="maintab" data-sec="sec-stupts">نقاط الطلاب</button>
     <button class="maintab" data-sec="sec-lessons">الدروس</button>
   </div>
 
@@ -453,6 +454,24 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
     </div>
     <div style="overflow-x:auto" id="groupWrap"></div>
     <div class="note">نظام نقاط المجموعات: تبدأ كل مجموعة أسبوعها من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>+5</b> و<b>−5</b> (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. يظهر لكل مجموعة مجموع نقاط الأسبوع المحدد و<b>المجموع الكلي من بداية الفصل</b>. اضغط على اسم المجموعة لعرض الأعضاء والقائد وإضافة أو حذف الطلاب. كل طالب ينتمي إلى مجموعة واحدة كحد أقصى.</div>
+  </section>
+
+  <!-- تبويب نقاط الطلاب -->
+  <section class="section" id="sec-stupts">
+    <h2>⭐ نقاط الطلاب</h2>
+    <div class="tabs" id="sptsTabs"></div>
+    <div class="controls">
+      <label for="sptsWeekSel">الأسبوع:</label>
+      <select id="sptsWeekSel"></select>
+      <span class="week-dates" id="sptsWeekDates"></span>
+      <label for="sptsStep">مقدار الزر ±:</label>
+      <input type="number" id="sptsStep" min="1" max="50" value="5" style="width:60px;text-align:center;font:inherit;font-weight:700;padding:6px 4px;border:1px solid var(--line);border-radius:9px">
+      <button class="pbtn2" id="sptsAutoBtn">🎯 اختيار تلقائي بالأسئلة</button>
+      <span class="saved" id="sptsSavedMsg"></span>
+    </div>
+    <div id="sptsQuizBox"></div>
+    <div style="overflow-x:auto" id="sptsWrap"></div>
+    <div class="note">نظام نقاط الطلاب: يبدأ كل طالب أسبوعه من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>±</b> بحسب «مقدار الزر» (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. يظهر لكل طالب وسم مجموعته ونقاط الأسبوع المحدد و<b>المجموع الكلي من بداية الفصل</b>. اضغط على عنوان أي عمود للترتيب. زر «🎯 اختيار تلقائي بالأسئلة» يفتح جلسة اختبار داخل هذا التبويب ويمكن أن تُضاف درجة الإجابة تلقائياً إلى نقاط الطالب.</div>
   </section>
 
   <!-- تبويب الدروس -->
@@ -2310,6 +2329,190 @@ document.getElementById('addGroupBtn').onclick=()=>{
   ov.querySelector('#ngCancel').onclick=()=>ov.remove();
 };
 
+/* ====== نظام نقاط الطلاب: كل طالب يبدأ أسبوعه من 20 نقطة ===== */
+/* التخزين: class_key='spt:<cls>' (week, student_idx=si, criterion_idx=0, value=النقاط) */
+const sptsCache = {};   // cls -> { loaded:bool, marks:{week:{si:val}} }
+let curStuPts = sheetKeys[0];
+let sptsSort = {col:null, dir:1};
+
+const sptsTabsEl = document.getElementById('sptsTabs');
+sheetKeys.forEach((k,i)=>{
+  const b=document.createElement('button');
+  b.className='tab'+(i===0?' active':'');
+  b.textContent=ROSTERS[k].class;
+  b.onclick=()=>{
+    document.querySelectorAll('#sptsTabs .tab').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    curStuPts=k; renderStuPoints();
+  };
+  sptsTabsEl.appendChild(b);
+});
+const sptsWeekSel = document.getElementById('sptsWeekSel');
+WEEKS.forEach(w=>{
+  const o=document.createElement('option');
+  o.value=w; o.textContent=weekLabel(w);
+  sptsWeekSel.appendChild(o);
+});
+sptsWeekSel.value = CUR_WEEK;
+sptsWeekSel.addEventListener('change', renderStuPoints);
+const sptsStepInp = document.getElementById('sptsStep');
+sptsStepInp.addEventListener('change', ()=>{
+  let st=parseInt(sptsStepInp.value); if(isNaN(st)||st<1) st=5;
+  sptsStepInp.value=st; renderStuPoints();
+});
+function sptsStep(){
+  const st=parseInt(sptsStepInp.value);
+  return (isNaN(st)||st<1)?5:st;
+}
+
+async function fetchStuPoints(cls){
+  if(sptsCache[cls] && sptsCache[cls].loaded) return;
+  const marks = {};
+  const r = await sb.from('marks').select('*').eq('class_key','spt:'+cls).eq('criterion_idx',0);
+  if(!r.error && r.data){
+    r.data.forEach(row=>{
+      const n = parseFloat(row.value);
+      if(isNaN(n)) return;
+      if(!marks[row.week]) marks[row.week]={};
+      marks[row.week][row.student_idx]=n;
+    });
+  }
+  sptsCache[cls] = { loaded:true, marks };
+}
+function getStuPoints(cls,si,w){
+  const m = sptsCache[cls] && sptsCache[cls].marks;
+  const wk = m && m[w] ? m[w] : {};
+  return wk[si]!==undefined ? wk[si] : 20;
+}
+async function setStuPoints(cls,si,w,v){
+  const c = sptsCache[cls] || (sptsCache[cls]={loaded:true,marks:{}});
+  if(!c.marks[w]) c.marks[w]={};
+  c.marks[w][si]=v;
+  await sb.from('marks').upsert({
+    class_key:'spt:'+cls, week:w, student_idx:si, criterion_idx:0,
+    value:String(v), updated_at:new Date().toISOString()
+  });
+}
+async function addStuPoints(cls,si,w,delta){
+  await setStuPoints(cls,si,w, Math.max(0, getStuPoints(cls,si,w)+delta));
+}
+/* المجموع الكلي من بداية الفصل حتى الأسبوع المحدد (نقاط هذا الأسبوع + الأسابيع السابقة فقط) */
+function stuTotalAll(cls,si,w){
+  let s=0;
+  (CURRICULA[cls] ? CURRICULA[cls].weeks : []).forEach(wd=>{
+    if(typeof wd.week==='number' && wd.week<18 && wd.week<=w) s+=getStuPoints(cls,si,wd.week);
+  });
+  return s;
+}
+
+/* --- عرض جدول نقاط الطلاب --- */
+async function renderStuPoints(){
+  const cls = curStuPts;
+  const w = +sptsWeekSel.value;
+  const wrapEl = document.getElementById('sptsWrap');
+  if(!(sptsCache[cls] && sptsCache[cls].loaded)){
+    wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل نقاط الطلاب من قاعدة البيانات…</div>';
+    await fetchStuPoints(cls);
+  }
+  if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+  let dates="";
+  const wd = weekData(cls, w);
+  if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
+  document.getElementById('sptsWeekDates').textContent = dates;
+  const students = ROSTERS[cls].students;
+  const step = sptsStep();
+  const cols = ['name','week','total'];
+  const headers = ['اسم الطالب','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
+  let order = students.map((_,i)=>i);
+  if(sptsSort.col!==null){
+    order.sort((a,b)=>{
+      let va,vb;
+      if(sptsSort.col==='name'){ return students[a].localeCompare(students[b],'ar')*sptsSort.dir; }
+      if(sptsSort.col==='total'){ va=stuTotalAll(cls,a,w); vb=stuTotalAll(cls,b,w); }
+      else { va=getStuPoints(cls,a,w); vb=getStuPoints(cls,b,w); }
+      return (va-vb)*sptsSort.dir;
+    });
+  }
+  let html = `<table class="sheet gpts"><tr><th style="cursor:default">م</th>`;
+  headers.forEach((h,idx)=>{
+    const c = cols[idx];
+    const arrow = sptsSort.col===c ? (sptsSort.dir===1?'▲':'▼') : '';
+    html += `<th data-col="${c}">${h}<span class="arrow">${arrow}</span></th>`;
+  });
+  html += `</tr>`;
+  order.forEach((si,r)=>{
+    const pts = getStuPoints(cls,si,w);
+    const g = findGroupOf(cls,si);
+    const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
+    html += `<tr><td>${r+1}</td>
+      <td class="name">${escH(students[si])}${gTag}</td>
+      <td class="ptsCell">
+        <button class="ptsBtn minus" data-si="${si}" data-d="-1" title="خصم ${step} نقاط">−${step}</button>
+        <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-si="${si}" title="نقاط الطالب هذا الأسبوع">
+        <button class="ptsBtn plus" data-si="${si}" data-d="1" title="إضافة ${step} نقاط">+${step}</button>
+      </td>
+      <td class="total">${stuTotalAll(cls,si,w)}</td></tr>`;
+  });
+  html += `</table>`;
+  wrapEl.innerHTML = html;
+
+  wrapEl.querySelectorAll('th[data-col]').forEach(th=>{
+    th.onclick=()=>{
+      const c=th.dataset.col;
+      if(sptsSort.col===c){ sptsSort.dir*=-1; } else { sptsSort={col:c,dir:1}; }
+      renderStuPoints();
+    };
+  });
+  const msg=document.getElementById('sptsSavedMsg');
+  wrapEl.querySelectorAll('.ptsBtn').forEach(b=>{
+    b.onclick=async ()=>{
+      const si=+b.dataset.si, d=(+b.dataset.d)*sptsStep(); /* مقدار الزر يُقرأ لحظة الضغط */
+      const inp=wrapEl.querySelector(`.ptsInp[data-si="${si}"]`);
+      const nv=Math.max(0, getStuPoints(cls,si,w)+d);
+      inp.value=nv;
+      inp.classList.toggle('low', nv<20);
+      try{
+        await addStuPoints(cls,si,w,d);
+        msg.textContent='تم الحفظ في قاعدة البيانات ✓';
+      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      b.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
+      setTimeout(()=>msg.textContent='',2000);
+    };
+  });
+  wrapEl.querySelectorAll('.ptsInp').forEach(inp=>{
+    inp.classList.toggle('low', +inp.value<20);
+    inp.addEventListener('change', async ()=>{
+      let v=parseInt(inp.value);
+      if(isNaN(v)) v=20;
+      v=Math.max(0,v);
+      inp.value=v;
+      inp.classList.toggle('low', v<20);
+      const si=+inp.dataset.si;
+      msg.textContent='جارٍ الحفظ…';
+      try{ await setStuPoints(cls,si,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
+      catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      inp.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
+      setTimeout(()=>msg.textContent='',2000);
+    });
+  });
+}
+renderStuPoints();
+
+/* زر «🎯 اختيار تلقائي بالأسئلة» داخل تبويب نقاط الطلاب: جلسة طلاب فقط تُعرض لوحتها أعلى التبويب */
+document.getElementById('sptsAutoBtn').onclick=async ()=>{
+  const cls=curStuPts, w=+sptsWeekSel.value;
+  const btn=document.getElementById('sptsAutoBtn');
+  btn.disabled=true; btn.textContent='جارٍ التحضير…';
+  try{
+    await fetchClassMarks(cls);
+    await fetchGroups(cls);
+    await fetchStuPoints(cls);
+  }catch(e){}
+  btn.disabled=false; btn.textContent='🎯 اختيار تلقائي بالأسئلة';
+  qsOpenSettings(cls, w, null, document.getElementById('sptsQuizBox'),
+    {studentsOnly:true, hideWeek:true, fixedWeek:w, defAddPts:true, title:'🎯 اختيار تلقائي بالأسئلة — نقاط الطلاب'});
+};
+
 /* ====== الاختيار التلقائي (طلاب / مجموعات) ====== */
 let picker = null; /* {mode, cls, w, queue:[], idx, crit, correctVal, time, timerId} */
 /* إرفاق قائمة إكمال تلقائي بحقل إدخال */
@@ -3083,8 +3286,10 @@ async function renderQuiz(cls,w,li,box){
 
 /* ====== جلسة «اختبار بالاختيار التلقائي» داخل تبويب اختبر معلوماتك ====== */
 let quizSession = null;
-/* نافذة إعدادات الجلسة: بالطلاب أو بالمجموعات، مصدر الأسئلة = مادة ثم درس (أو بدون أسئلة) */
-function qsOpenSettings(cls,w,li,box){
+/* نافذة إعدادات الجلسة: بالطلاب أو بالمجموعات، مصدر الأسئلة = مادة ثم درس (أو بدون أسئلة)
+   opts: {studentsOnly, hideWeek, fixedWeek, defAddPts, title} — تُستخدم من تبويب نقاط الطلاب */
+function qsOpenSettings(cls,w,li,box,opts){
+  opts = opts || {};
   const critOpts = CRITERIA.map((c,i)=>`<option value="${i}"${i===2?' selected':''}>${c}</option>`).join('');
   /* دروس هذا الفصل التي لها أسئلة، مع مادة كل درس */
   const qzCls = QUIZZES[cls] || {};
@@ -3108,8 +3313,8 @@ function qsOpenSettings(cls,w,li,box){
     .map(x=>`<option value="${x.k}"${x.k===curKey?' selected':''}>${x.title}</option>`).join('');
   const qsSrcOpts = defSubj ? qsLessonOptsFor(defSubj) : '';
   const ov = openModal(`
-    <h3>🎯 اختبار بالاختيار التلقائي — ${ROSTERS[cls].class}</h3>
-    <div class="frow"><label>طريقة السحب</label>
+    <h3>${opts.title || '🎯 اختبار بالاختيار التلقائي'} — ${ROSTERS[cls].class}</h3>
+    <div class="frow"${opts.studentsOnly?' style="display:none"':''}><label>طريقة السحب</label>
       <select id="qsMode">
         <option value="students">بالطلاب</option>
         <option value="groups">بالمجموعات</option>
@@ -3119,6 +3324,7 @@ function qsOpenSettings(cls,w,li,box){
         <option value="random">عشوائي</option>
         <option value="name">ترتيب اسمي</option>
         <option value="total">بحسب مجمل الدرجات</option>
+        <option value="points">بحسب نقاط الطالب (هذا الأسبوع)</option>
         ${CRITERIA.map((c,i)=>`<option value="col${i}">بحسب درجة: ${c}</option>`).join('')}
       </select></div>
     <div class="frow" id="qsRotateRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -3128,10 +3334,12 @@ function qsOpenSettings(cls,w,li,box){
         <option value="desc">تنازلي (يبدأ من أ / الأعلى)</option>
         <option value="asc">تصاعدي (يبدأ من ي / الأدنى)</option>
       </select></div>
-    <div class="frow"><label>الأسبوع الذي تُسجَّل فيه الدرجة</label>
+    <div class="frow"${opts.hideWeek?' style="display:none"':''}><label>الأسبوع الذي تُسجَّل فيه الدرجة</label>
       <select id="qsWeek">${WEEKS.map(x=>`<option value="${x}"${x===w?' selected':''}>${weekLabel(x)}</option>`).join('')}</select></div>
     <div class="frow"><label>المعيار الذي تُسجَّل فيه الدرجة</label><select id="qsCrit">${critOpts}</select></div>
     <div class="frow"><label>قيمة درجة الإجابة الصحيحة</label><input id="qsVal" type="number" min="0" max="7" value="5"></div>
+    <div class="frow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="qsStuPts" style="width:20px;height:20px;accent-color:var(--teal)"${opts.defAddPts?' checked':''}> ✨ إضافة درجة الإجابة في نقاط الطالب</label></div>
     <div class="frow"><label>مادة الأسئلة</label><select id="qsQSubj">${qsSubjOpts}</select></div>
     <div class="frow" id="qsQSrcRow"><label>درس الأسئلة</label><select id="qsQSrc"${qsSrcOpts?'':' disabled'}>${qsSrcOpts}</select></div>
     <div class="frow" id="qsQOrderRow"><label>ترتيب الأسئلة</label><select id="qsQOrder">
@@ -3167,6 +3375,7 @@ function qsOpenSettings(cls,w,li,box){
     const rotate = mode==='students' && ov.querySelector('#qsRotate').checked;
     const dir = ov.querySelector('#qsDir').value;
     const regW = +ov.querySelector('#qsWeek').value;
+    const addPts = mode==='students' && ov.querySelector('#qsStuPts').checked;
     const crit = +ov.querySelector('#qsCrit').value;
     let correctVal = parseFloat(ov.querySelector('#qsVal').value); if(isNaN(correctVal)) correctVal=5;
     correctVal = Math.max(0,Math.min(7,correctVal));
@@ -3178,6 +3387,7 @@ function qsOpenSettings(cls,w,li,box){
     startBtn.disabled=true; startBtn.textContent='جارٍ التحضير…';
     await fetchClassMarks(cls);
     if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+    if(mode==='students' && (method==='points' || addPts)) await fetchStuPoints(cls);
     if(mode==='groups' && !(groupsCache[cls] && groupsCache[cls].defs && groupsCache[cls].defs.length)){
       startBtn.disabled=false; startBtn.textContent='بدء';
       alert('لا توجد مجموعات في هذا الفصل بعد — أنشئها من تبويب درجات المجموعات أولاً.');
@@ -3211,6 +3421,7 @@ function qsOpenSettings(cls,w,li,box){
       queue = Array.from({length:n},(_,i)=>i);
       if(method==='name') queue.sort((a,b)=>ROSTERS[cls].students[a].localeCompare(ROSTERS[cls].students[b],'ar'));
       else if(method==='total') queue.sort((a,b)=>studentValue(cls,regW,b,'total')-studentValue(cls,regW,a,'total'));
+      else if(method==='points') queue.sort((a,b)=>getStuPoints(cls,b,regW)-getStuPoints(cls,a,regW));
       else if(method.startsWith('col')) queue.sort((a,b)=>studentValue(cls,regW,b,method.slice(3))-studentValue(cls,regW,a,method.slice(3)));
       if(method==='random'){
         for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; }
@@ -3220,20 +3431,23 @@ function qsOpenSettings(cls,w,li,box){
     ov.remove();
     quizSession = {cls, w:regW, li, key, crit, correctVal, dir, queue, idx:0,
       mode, noQ, rotate, qOrder, qRepeat, usedQ:[], seqPos:0, pool,
+      addToStuPts:addPts, opts,
       cur:{stuId:null, qItem:null, answered:false, selectedCh:null}, notice:'', box};
-    qsBuildPanel();
+    qsBuildPanel(box);
     qsNextTurn();
   };
 }
-/* بناء لوحة الجلسة في أعلى تبويب «اختبر معلوماتك» */
-function qsBuildPanel(){
+/* بناء لوحة الجلسة في أعلى الحاوية الممررة (تبويب «اختبر معلوماتك» أو تبويب «نقاط الطلاب») */
+function qsBuildPanel(container){
   const s = quizSession; if(!s) return;
-  let panel = s.box.querySelector('#qSession');
+  container = container || s.box;
+  s.box = container;
+  let panel = container.querySelector('#qSession');
   if(!panel){
     panel = document.createElement('div');
     panel.id = 'qSession';
     panel.className = 'weekcard';
-    s.box.insertBefore(panel, s.box.firstChild);
+    container.insertBefore(panel, container.firstChild);
   }
   panel.innerHTML = `
     <div class="qsTop">
@@ -3241,6 +3455,7 @@ function qsBuildPanel(){
       <button class="pbtn2 ghost" id="qsFull" style="font-size:.85rem">⛶ ملء الشاشة</button>
       <button class="pbtn2 danger" id="qsEnd" style="font-size:.85rem">✖ إنهاء</button>
     </div>
+    ${s.addToStuPts?'<div style="text-align:center;font-size:.8rem;font-weight:700;color:var(--teal);margin-bottom:6px">تُضاف درجة الإجابة لنقاط الطالب ✨</div>':''}
     <div id="qsBody"></div>`;
   panel.querySelector('#qsEnd').onclick=()=>qsEnd();
   panel.querySelector('#qsFull').onclick=()=>{
@@ -3287,6 +3502,13 @@ async function qsRecord(s, v, kind){
   try{ await pushMark(s.cls,s.w,id,s.crit,v); }catch(e){}
   syncGroupFromStudent(s.cls,s.w,id,s.crit);
   if(document.getElementById('sec-sheets').classList.contains('active')) renderSheet();
+  /* ✨ إضافة درجة الإجابة إلى نقاط الطالب عند تفعيل الخيار (الصحيحة فقط؛ الخاطئة/التخطي لا تغيير) */
+  if(s.addToStuPts){
+    const d = kind==='good' ? s.correctVal : 0;
+    if(d){ try{ await addStuPoints(s.cls, id, s.w, d); }catch(e){} }
+    const spSec = document.getElementById('sec-stupts');
+    if(spSec && (spSec.classList.contains('active') || spSec.contains(s.box))) renderStuPoints();
+  }
 }
 /* الانتقال لطالب/مجموعة جديدة من الـqueue مع سؤال جديد (إلا في وضع «بدون أسئلة») */
 function qsNextTurn(){
@@ -3304,7 +3526,7 @@ function qsRenderDone(){
       <button class="pbtn2" id="qsAgain">بدء جولة جديدة</button>
       <button class="pbtn2 ghost" id="qsClose">إغلاق</button>
     </div></div>`;
-  body.querySelector('#qsAgain').onclick=()=>{ const c=s.cls, w=s.w, li=s.li, bx=s.box; qsEnd(); qsOpenSettings(c,w,li,bx); };
+  body.querySelector('#qsAgain').onclick=()=>{ const c=s.cls, w=s.w, li=s.li, bx=s.box, op=s.opts; qsEnd(); qsOpenSettings(c,w,li,bx,op); };
   body.querySelector('#qsClose').onclick=()=>qsEnd();
 }
 /* عرض دور الطالب الحالي: الاسم + السؤال + أزرار التفاعل */
@@ -3348,9 +3570,12 @@ function qsRenderTurn(){
         <button class="pbtn2 danger" id="qsBad">✖ جواب خاطئ (0)</button>
       </div>`;
   }
+  const stuPtsLine = (!isGrp && typeof sptsCache!=='undefined' && sptsCache[s.cls] && sptsCache[s.cls].loaded)
+    ? `<div class="qsCount" style="font-size:.8rem">نقاطه هذا الأسبوع: ${getStuPoints(s.cls,c.stuId,s.w)}</div>` : '';
   body.innerHTML = `
     <div class="qsName">${escH(name)}</div>
     ${sub?`<div class="qsCount" style="font-size:.8rem">${escH(sub)}</div>`:''}
+    ${stuPtsLine}
     <div class="qsCount">${isGrp?'المجموعة':'الطالب'} ${s.idx} من ${s.queue.length}</div>
     ${s.notice?`<div style="text-align:center"><span class="qsNotice">${s.notice}</span></div>`:''}
     ${qHtml}
