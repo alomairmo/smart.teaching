@@ -631,9 +631,12 @@ async function saveAccts(obj){
 }
 /* إعدادات المعلم (فصولي/موادي): class_key='tset:<user>' */
 function defaultTeacherSet(){
-  const subs=new Set();
-  Object.values(SCHED_CLASS_SUBJECTS).forEach(a=>a.forEach(s=>subs.add(s)));
-  return {classes:Object.keys(SCHED_CLASS_SUBJECTS), subjects:[...subs]};
+  const classes = Object.keys(SCHED_CLASS_SUBJECTS);
+  const cs = {};
+  classes.forEach(cid=>{ cs[cid] = availClassSubjects(cid); });
+  const subs = new Set();
+  Object.values(cs).forEach(a=>a.forEach(s=>subs.add(s)));
+  return {classes:classes, subjects:[...subs], classSubjects:cs};
 }
 async function fetchTset(){
   let def;
@@ -642,10 +645,18 @@ async function fetchTset(){
     const r = await sb.from('marks').select('*').eq('class_key','tset:'+CURRENT_USER).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
     if(!r.error && r.data && r.data.length){
       const p = JSON.parse(r.data[0].value);
-      TEACHER_SET = {
-        classes: (p && Array.isArray(p.classes) && p.classes.length) ? p.classes.slice() : def.classes,
-        subjects: (p && Array.isArray(p.subjects) && p.subjects.length) ? p.subjects.slice() : def.subjects
-      };
+      const classes = (p && Array.isArray(p.classes) && p.classes.length) ? p.classes.slice() : def.classes;
+      const subjects = (p && Array.isArray(p.subjects) && p.subjects.length) ? p.subjects.slice() : def.subjects;
+      const cs = {};
+      classes.forEach(cid=>{
+        if(p && p.classSubjects && Array.isArray(p.classSubjects[cid])){
+          cs[cid] = p.classSubjects[cid].slice();
+        } else {
+          /* الصيغة القديمة: تقاطع مواد الفصل المتاحة مع قائمة مواده العامة */
+          cs[cid] = availClassSubjects(cid).filter(s=>subjects.includes(s));
+        }
+      });
+      TEACHER_SET = { classes: classes, subjects: subjects, classSubjects: cs };
       return;
     }
   }catch(e){}
@@ -2716,14 +2727,9 @@ function subjMatch(subjName, sj){
   if(ns==='قرآنوتفسير1' || ns==='دراساتإسلامية' || ns.indexOf('دراسات')===0) return sj!=='علوم' && sj!=='كيمياء';
   return true;
 }
-/* مواد الفصل المرشحة: افتراضيات الفصل ∩ مواد المعلم + بنك الكيمياء لمرحلته */
+/* مواد الفصل المرشحة: المواد التي اختارها المعلم لهذا الفصل في إعداداته */
 function classCandidateSubjects(cid){
-  let subjs;
-  try{ subjs = teacherSubjects(); }catch(e){ subjs = []; }
-  const base = (SCHED_CLASS_SUBJECTS[cid]||[]).slice();
-  const bank = {'1ث':'كيمياء 1','2ث':'كيمياء 2','3ث':'كيمياء 3'}[cid];
-  if(bank && !base.includes(bank)) base.push(bank);
-  return subjs.filter(s=>base.includes(s));
+  return classSubjectsOf(cid);
 }
 /* مفاتيح المناهج المرتبطة بفصول المعلم ومواده (من ⚙️ إعداداتي) */
 function visibleCurKeys(){
@@ -2950,6 +2956,21 @@ const SCHED_CLASS_SUBJECTS = {
   "2م":["المهارات الأسرية","علوم"],
   "3م":["المهارات الرقمية","علوم"]
 };
+/* المواد المتاحة لكل فصل (افتراضياته + بنك الكيمياء لمرحلته) */
+function availClassSubjects(cid){
+  const base = (SCHED_CLASS_SUBJECTS[cid]||[]).slice();
+  const bank = {'1ث':'كيمياء 1','2ث':'كيمياء 2','3ث':'كيمياء 3'}[cid];
+  if(bank && !base.includes(bank)) base.push(bank);
+  return base;
+}
+/* مواد الفصل التي اختارها المعلم (أو كل المتاحة افتراضياً) */
+function classSubjectsOf(cid){
+  try{
+    const ts = TEACHER_SET || defaultTeacherSet();
+    if(ts && ts.classSubjects && Array.isArray(ts.classSubjects[cid])) return ts.classSubjects[cid];
+  }catch(e){}
+  return availClassSubjects(cid);
+}
 /* بناء خلية جدول من اختيار الفصل والمادة مع ربط توزيع المنهج المعروف تلقائياً */
 function schedCellFromSel(cls, subj){
   if(!cls || !subj) return null;
@@ -3003,6 +3024,11 @@ function teacherClasses(){
     ? TEACHER_SET.classes : Object.keys(SCHED_CLASS_SUBJECTS);
 }
 function teacherSubjects(){
+  if(TEACHER_SET && TEACHER_SET.classSubjects){
+    const u = new Set();
+    Object.values(TEACHER_SET.classSubjects).forEach(a=>{ if(Array.isArray(a)) a.forEach(s=>u.add(s)); });
+    if(u.size) return [...u];
+  }
   return (TEACHER_SET && Array.isArray(TEACHER_SET.subjects) && TEACHER_SET.subjects.length)
     ? TEACHER_SET.subjects : defaultTeacherSet().subjects;
 }
@@ -3033,7 +3059,8 @@ function openScheduleEditor(){
     if(!cs.value){ ss.disabled = true; return; }
     ss.disabled = false;
     const cell = SCHEDULE[cs.dataset.day] && SCHEDULE[cs.dataset.day][cs.dataset.period];
-    let list = subjList.slice();
+    let list = classSubjectsOf(cs.value).slice();
+    if(!list.length) list = subjList.slice();
     /* أبقِ المادة المحفوظة ظاهرة حتى لو لم تعد ضمن قائمة موادي */
     if(cell && cell.cls===cs.value && cell.subj && !list.includes(cell.subj)) list.push(cell.subj);
     list.forEach(s=>{
@@ -39966,61 +39993,88 @@ const KNOWN_CLASSES = [
 ];
 function openSettings(){
   const cur = TEACHER_SET || defaultTeacherSet();
-  const draft = {classes:cur.classes.slice(), subjects:cur.subjects.slice()};
-  const listHtml = (arr, kind)=> arr.length
-    ? arr.map((x,i)=>`<div class="setRow"><span class="nm">${escH(x)}</span><button class="miniBtn del" data-kind="${kind}" data-i="${i}">حذف</button></div>`).join('')
-    : '<div class="ddEmpty">لا توجد عناصر بعد.</div>';
-  const clsOpts = KNOWN_CLASSES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+  const draft = {classes: cur.classes.slice(), classSubjects: {}};
+  cur.classes.forEach(cid=>{ draft.classSubjects[cid] = classSubjectsOf(cid).slice(); });
+  const clsLabel = id => ((KNOWN_CLASSES.find(k=>k.id===id)||{}).label) || id;
+  const hasCur = (cid,s)=>{ try{ return !!(schedCellFromSel(cid,s)||{}).cur; }catch(e){ return false; } };
   const ov = openModal(`
     <h3>⚙️ إعداداتي — ${escH(CURRENT_USER||'')}</h3>
-    <div class="setSecTitle">🕌 فصولي</div>
-    <div id="setClsList">${listHtml(draft.classes,'c')}</div>
+    <div class="note">أضف فصولك من القائمة أدناه، ثم تحت كل فصل أضف مواده من قائمته الخاصة. المواد المعلَّمة بـ 📚 لها تحضير كامل (مقطع شرح من عين + صفحات الكتاب + أسئلة + توزيع على الأسابيع).</div>
+    <div id="setClsCards" style="margin-top:10px"></div>
     <div class="setAddRow">
-      <select id="setClsSel">${clsOpts}</select>
-      <button class="pbtn2" id="setClsAdd">إضافة فصل</button>
+      <select id="setClsSel">${KNOWN_CLASSES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}</select>
+      <button class="pbtn2" id="setClsAdd">+ إضافة فصل</button>
     </div>
-    <div class="setSecTitle">📚 موادي</div>
-    <div id="setSubjList">${listHtml(draft.subjects,'s')}</div>
-    <div class="setAddRow">
-      <input id="setSubjInp" placeholder="اسم المادة الجديدة">
-      <button class="pbtn2" id="setSubjAdd">إضافة مادة</button>
-    </div>
-    <div class="note" style="margin-top:12px">تُستخدم هذه القوائم في محرر جدول المعلم (✏️ تعديل الجدول).</div>
+    <div class="note" style="margin-top:10px">تُستخدم هذه القوائم في محرر جدول المعلم وفي تبويبات توزيع المنهج والكشوف.</div>
     <div class="pkBtns">
       <button class="pbtn2" id="setSave">حفظ الإعدادات</button>
       <button class="pbtn2 ghost" id="setClose">إغلاق</button>
     </div>`);
-  const refresh=()=>{
-    ov.querySelector('#setClsList').innerHTML = listHtml(draft.classes,'c');
-    ov.querySelector('#setSubjList').innerHTML = listHtml(draft.subjects,'s');
-    bindDel();
-  };
-  const bindDel=()=>{
-    ov.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{
-      const arr = b.dataset.kind==='c' ? draft.classes : draft.subjects;
-      arr.splice(+b.dataset.i,1);
-      refresh();
+  const cardsEl = ov.querySelector('#setClsCards');
+  const render = ()=>{
+    if(!draft.classes.length){
+      cardsEl.innerHTML = '<div class="ddEmpty">لا توجد فصول بعد — أضف فصلك الأول من القائمة أدناه.</div>';
+      return;
+    }
+    cardsEl.innerHTML = draft.classes.map(cid=>{
+      const subs = draft.classSubjects[cid] || (draft.classSubjects[cid]=[]);
+      const avail = availClassSubjects(cid).filter(s=>!subs.includes(s));
+      const chips = subs.length
+        ? subs.map(s=>`<span class="setRow" style="display:inline-flex;gap:6px;align-items:center;margin:3px"><span class="nm">${escH(s)}${hasCur(cid,s)?' 📚':''}</span><button class="miniBtn del" data-cls="${cid}" data-subj="${escH(s)}">حذف</button></span>`).join('')
+        : '<span class="ddEmpty">لا مواد بعد — أضفها من القائمة</span>';
+      const opts = avail.length
+        ? avail.map(s=>`<option value="${escH(s)}">${escH(s)}${hasCur(cid,s)?' 📚':''}</option>`).join('')
+        : '<option value="">— أُضيفت كل المواد المتاحة —</option>';
+      return `<div class="setClassCard" style="border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <b>${escH(clsLabel(cid))}</b>
+          <button class="miniBtn del" data-delcls="${cid}">حذف الفصل</button>
+        </div>
+        <div>${chips}</div>
+        <div class="setAddRow" style="margin-top:8px">
+          <select data-subjsel="${cid}">${opts}</select>
+          <button class="pbtn2" data-addsubj="${cid}">+ إضافة مادة</button>
+        </div>
+      </div>`;
+    }).join('');
+    cardsEl.querySelectorAll('[data-delcls]').forEach(b=>b.onclick=()=>{
+      const cid=b.dataset.delcls;
+      draft.classes = draft.classes.filter(x=>x!==cid);
+      delete draft.classSubjects[cid];
+      render();
+    });
+    cardsEl.querySelectorAll('button.del[data-subj]').forEach(b=>b.onclick=()=>{
+      const cid=b.dataset.cls, s=b.dataset.subj;
+      draft.classSubjects[cid] = (draft.classSubjects[cid]||[]).filter(x=>x!==s);
+      render();
+    });
+    cardsEl.querySelectorAll('[data-addsubj]').forEach(b=>b.onclick=()=>{
+      const cid=b.dataset.addsubj;
+      const selEl=cardsEl.querySelector('select[data-subjsel="'+cid+'"]');
+      const v=selEl && selEl.value;
+      if(v && !(draft.classSubjects[cid]||[]).includes(v)){
+        (draft.classSubjects[cid]=draft.classSubjects[cid]||[]).push(v);
+        render();
+      }
     });
   };
-  bindDel();
+  render();
   ov.querySelector('#setClsAdd').onclick=()=>{
     const v=ov.querySelector('#setClsSel').value;
-    if(v && !draft.classes.includes(v)){ draft.classes.push(v); refresh(); }
+    if(v && !draft.classes.includes(v)){
+      draft.classes.push(v);
+      draft.classSubjects[v]=[];
+      render();
+    }
   };
-  const addSubj=()=>{
-    const inp=ov.querySelector('#setSubjInp');
-    const v=inp.value.trim();
-    if(v && !draft.subjects.includes(v)){ draft.subjects.push(v); inp.value=''; refresh(); }
-    inp.focus();
-  };
-  ov.querySelector('#setSubjAdd').onclick=addSubj;
-  ov.querySelector('#setSubjInp').addEventListener('keydown',e=>{ if(e.key==='Enter') addSubj(); });
   ov.querySelector('#setClose').onclick=()=>ov.remove();
   ov.querySelector('#setSave').onclick=async ()=>{
     const btn=ov.querySelector('#setSave');
     btn.disabled=true; btn.textContent='جارٍ الحفظ…';
     try{
-      TEACHER_SET = {classes:draft.classes.slice(), subjects:draft.subjects.slice()};
+      const subs=new Set();
+      Object.values(draft.classSubjects).forEach(a=>a.forEach(s=>subs.add(s)));
+      TEACHER_SET = {classes:draft.classes.slice(), subjects:[...subs], classSubjects:draft.classSubjects};
       await saveTset();
       try{ rebuildTeacherViews(); }catch(e){}
       ov.remove();
