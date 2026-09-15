@@ -79,6 +79,12 @@ table tbody tr:hover td{background:#fbf6ea}
 .cell .lesson b{color:var(--accent); display:block; font-size:.75rem}
 .cell.empty{color:#cfc5b1}
 .cell.nodata .lesson{background:#f5f2ec; color:var(--muted)}
+/* نافذة تعديل جدول المعلم */
+.modalCard.schedEditCard{max-width:980px}
+table.schedEdit{min-width:780px}
+table.schedEdit td{padding:4px 3px; vertical-align:middle}
+table.schedEdit select{width:100%; font-size:.8rem; padding:3px 4px; min-height:30px; border-radius:8px; margin-bottom:2px}
+table.schedEdit select:disabled{opacity:.45; cursor:not-allowed}
 .note{font-size:.8rem; color:var(--muted); margin-top:10px; background:var(--accent-soft); padding:10px 14px; border:1px dashed #dcc794; border-radius:12px}
 
 /* التبويبات الفرعية */
@@ -409,6 +415,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
       <label for="weekSel">الأسبوع:</label>
       <select id="weekSel"></select>
       <span class="week-dates" id="weekDates"></span>
+      <button class="pbtn2 ghost" id="editSchedBtn" style="min-height:40px; padding:6px 16px; font-size:.85rem; margin-inline-start:auto">✏️ تعديل الجدول</button>
     </div>
     <h2>🗓️ جدول الحصص الأسبوعي</h2>
     <div style="overflow-x:auto">
@@ -1675,6 +1682,117 @@ function renderSchedule(){
 }
 sel.addEventListener('change', renderSchedule);
 renderSchedule();
+
+/* ====== تعديل جدول المعلم ====== */
+const SCHED_CLASS_SUBJECTS = {
+  "1ث":["قرآن وتفسير 1"],
+  "4ب":["الدراسات الإسلامية","بدنية"],
+  "5ب":["الدراسات الإسلامية","بدنية"],
+  "6ب":["الدراسات الإسلامية","بدنية"],
+  "1م":["المهارات الأسرية"],
+  "2م":["المهارات الأسرية"],
+  "3م":["المهارات الرقمية"]
+};
+/* بناء خلية جدول من اختيار الفصل والمادة مع ربط توزيع المنهج المعروف تلقائياً */
+function schedCellFromSel(cls, subj){
+  if(!cls || !subj) return null;
+  const cell = {cls:cls, subj:subj};
+  if(cls==="1ث" && subj==="قرآن وتفسير 1") cell.cur="sec1";
+  else if(subj==="الدراسات الإسلامية"){
+    if(cls==="4ب") cell.cur="g4";
+    else if(cls==="5ب") cell.cur="g5";
+    else if(cls==="6ب") cell.cur="g6";
+  }
+  return cell;
+}
+/* استبدال محتوى SCHEDULE بكائن جديد مع الحفاظ على المرجع نفسه */
+function applyScheduleData(obj){
+  Object.keys(SCHEDULE).forEach(k=>delete SCHEDULE[k]);
+  for(const d of Object.keys(obj||{})){
+    SCHEDULE[d]={};
+    for(const p of Object.keys(obj[d]||{})){
+      const c=obj[d][p];
+      if(c && c.cls && c.subj){
+        SCHEDULE[d][p]={cls:c.cls, subj:c.subj};
+        if(c.cur) SCHEDULE[d][p].cur=c.cur;
+      }
+    }
+  }
+}
+/* جلب الجدول المحفوظ من قاعدة البيانات (class_key='sched') وتطبيقه على SCHEDULE */
+async function fetchSchedule(){
+  const r = await sb.from('marks').select('*').eq('class_key','sched').eq('week',0);
+  if(!r.error && r.data && r.data.length){
+    try{
+      const obj = JSON.parse(r.data[0].value);
+      if(obj && typeof obj==='object' && !Array.isArray(obj)) applyScheduleData(obj);
+    }catch(e){}
+  }
+}
+function openScheduleEditor(){
+  let html = '<tr><th>اليوم</th>' + Array.from({length:PERIODS},(_,i)=>`<th>الحصة ${i+1}</th>`).join("") + '</tr>';
+  for(const d of DAYS){
+    html += `<tr><td class="day">${d}</td>`;
+    for(let p=1;p<=PERIODS;p++){
+      html += `<td><select class="seCls" data-day="${d}" data-period="${p}"></select><select class="seSubj" data-day="${d}" data-period="${p}"></select></td>`;
+    }
+    html += '</tr>';
+  }
+  const ov = openModal(`
+    <h3>✏️ تعديل جدول المعلم</h3>
+    <div class="note" style="margin:0 0 10px">اختر الفصل والمادة لكل حصة. الخلية الفارغة تُحذف من الجدول، والربط بتوزيع المنهج يتم تلقائياً.</div>
+    <div style="overflow-x:auto">
+    <table class="sched schedEdit">${html}</table>
+    </div>
+    <div class="pkBtns"><button class="pbtn2" id="seSave">حفظ الجدول</button><button class="pbtn2 ghost" id="seCancel">إلغاء</button></div>`);
+  ov.querySelector('.modalCard').classList.add('schedEditCard');
+  const subjOf = (d,p)=>ov.querySelector(`.seSubj[data-day="${d}"][data-period="${p}"]`);
+  const fillSubj = (cs, keep)=>{
+    const ss = subjOf(cs.dataset.day, cs.dataset.period);
+    const prev = keep ? ss.value : null;
+    ss.innerHTML = "";
+    if(!cs.value){ ss.disabled = true; return; }
+    ss.disabled = false;
+    (SCHED_CLASS_SUBJECTS[cs.value]||[]).forEach(s=>{
+      const o=document.createElement('option'); o.value=s; o.textContent=s; ss.appendChild(o);
+    });
+    if(prev && (SCHED_CLASS_SUBJECTS[cs.value]||[]).includes(prev)) ss.value = prev;
+  };
+  ov.querySelectorAll('.seCls').forEach(cs=>{
+    const o0=document.createElement('option'); o0.value=""; o0.textContent="— فارغ —"; cs.appendChild(o0);
+    Object.keys(SCHED_CLASS_SUBJECTS).forEach(c=>{
+      const o=document.createElement('option'); o.value=c; o.textContent=c; cs.appendChild(o);
+    });
+    const cell = SCHEDULE[cs.dataset.day] && SCHEDULE[cs.dataset.day][cs.dataset.period];
+    if(cell && SCHED_CLASS_SUBJECTS[cell.cls]) cs.value = cell.cls;
+    fillSubj(cs, false);
+    if(cell && cs.value && (SCHED_CLASS_SUBJECTS[cell.cls]||[]).includes(cell.subj)){
+      subjOf(cs.dataset.day, cs.dataset.period).value = cell.subj;
+    }
+    cs.addEventListener('change', ()=>fillSubj(cs, true));
+  });
+  ov.querySelector('#seCancel').onclick=()=>ov.remove();
+  ov.querySelector('#seSave').onclick=async ()=>{
+    const btn = ov.querySelector('#seSave');
+    btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+    const ns = {};
+    ov.querySelectorAll('.seCls').forEach(cs=>{
+      if(!cs.value) return;
+      const cell = schedCellFromSel(cs.value, subjOf(cs.dataset.day, cs.dataset.period).value);
+      if(!cell) return;
+      if(!ns[cs.dataset.day]) ns[cs.dataset.day]={};
+      ns[cs.dataset.day][cs.dataset.period]=cell;
+    });
+    try{
+      await sb.from('marks').upsert({class_key:'sched', week:0, student_idx:0, criterion_idx:0,
+        value:JSON.stringify(ns), updated_at:new Date().toISOString()});
+    }catch(e){}
+    applyScheduleData(ns);
+    renderSchedule();
+    ov.remove();
+  };
+}
+document.getElementById('editSchedBtn').onclick = openScheduleEditor;
 
 /* ====== تبويبات توزيع المنهج ====== */
 const tabsEl = document.getElementById('tabs');
@@ -4671,6 +4789,8 @@ document.addEventListener('click', e=>{
   openLessonPage(el.dataset.cls, w, +el.dataset.li);
 });
 
+/* جلب جدول المعلم المحفوظ من قاعدة البيانات وتطبيقه ثم إعادة رسم الجدول */
+(async ()=>{ try{ await fetchSchedule(); }catch(e){} if(typeof renderSchedule==='function') renderSchedule(); })();
 /* تحميل حالة الدروس لكل الفصول في الخلفية */
 (async ()=>{ for(const k of sheetKeys){ await fetchLessonsDone(k); } applyLessonDone(); })();
 /* إعادة رسم جدول المعلم بعد توفر بيانات المواد (BOOKDATA) لعرض مربعات المواد وترتيب الدروس */
