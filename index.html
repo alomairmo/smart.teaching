@@ -38193,7 +38193,7 @@ function lessonBookPages(cls,w,li){
   const rec = (BOOKDATA[cls]||{})[w+':'+li];
   if(!rec || !rec.p) return [];
   const a=rec.p[0], b=rec.p[1], arr=[];
-  for(let i=a;i<=b;i++) arr.push('books/'+cls+'/p'+i+'.jpg?v=2');
+  for(let i=a;i<=b;i++) arr.push('books2/'+cls+'/p'+i+'.jpg');
   return arr;
 }
 
@@ -39709,7 +39709,7 @@ function openLessonPage(cls,w,li){
             <button class="bTool" id="bkClear" title="مسح الكل للصفحة الحالية">🗑️</button>
           </div>
         </div>
-        <div id="bookScroll"><div id="bookZoom">` + pages.map(p=>`<div class="bookPgW" data-src="${p}"><img class="bookPg" loading="lazy" draggable="false" src="${p}" alt="صفحة من الكتاب"><canvas class="bookCv draw"></canvas></div>`).join('') + `</div></div>`
+        <div id="bookScroll"><div id="bookZoom">` + pages.map(p=>`<div class="bookPgW" data-src="${p}"><img class="bookPg" loading="lazy" draggable="false" src="${p}" alt="صفحة من الكتاب" onerror="var d=document.createElement('div');d.style.cssText='padding:24px;text-align:center;color:#b00020;background:#fff3f3;border:1px solid #e0b4b4;border-radius:10px;margin:8px;direction:rtl';d.textContent='تعذّر تحميل الصفحة — صوّر هذه الرسالة وأرسلها للمطوّر: '+this.src;this.replaceWith(d);"><canvas class="bookCv draw"></canvas></div>`).join('') + `</div></div>`
         : '<div class="ddEmpty" style="margin-top:14px">لا توجد صفحات كتاب مرتبطة بهذا الدرس (دروس القرآن الكريم حفظاً وتلاوة ليس لها صفحات في كتاب الدراسات).</div>'}
     </div>
     <div class="lpPane" id="lpPaneQuiz" style="display:none"></div>
