@@ -134,6 +134,24 @@ table.sheet tr:nth-child(even) td{background:#fbf8f0}
 #loginGate button:hover{transform:translateY(-2px); box-shadow:0 8px 20px rgba(47,111,102,.45)}
 #loginGate button:active{transform:translateY(0)}
 #loginGate .err{color:#a33; font-size:.82rem; min-height:1.4em; margin-top:8px}
+#loginGate .lgTabs{display:flex; gap:6px; margin-bottom:16px; background:var(--accent-soft); border:1px solid var(--line); border-radius:12px; padding:4px}
+#loginGate .lgTabs button{flex:1; font:inherit; font-weight:700; font-size:.88rem; padding:9px 6px; min-height:40px; border:none; border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; box-shadow:none; transition:all .2s ease}
+#loginGate .lgTabs button:hover{transform:none; box-shadow:none; color:var(--accent)}
+#loginGate .lgTabs button.active{background:linear-gradient(135deg,var(--teal),var(--teal-deep)); color:#fff; box-shadow:0 3px 8px rgba(47,111,102,.3)}
+#loginGate .lgNote{font-size:.72rem; color:var(--muted); margin-top:10px; line-height:1.7}
+#loginGate .okMsg{color:var(--teal); font-size:.82rem; min-height:1.4em; margin-top:8px; font-weight:700}
+#settingsBtn{position:absolute; top:14px; left:14px; z-index:5; font:inherit; font-size:.8rem; font-weight:700; padding:8px 16px; min-height:38px; border:1px solid rgba(255,255,255,.5); border-radius:999px; background:rgba(255,255,255,.16); color:#fff; cursor:pointer; backdrop-filter:blur(4px); transition:all .25s ease}
+#settingsBtn:hover{background:rgba(255,255,255,.3); transform:translateY(-2px)}
+.setSecTitle{font-size:.92rem; font-weight:800; color:var(--teal); margin:12px 0 6px; display:flex; align-items:center; gap:6px}
+.setRow{display:flex; align-items:center; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line); font-size:.9rem}
+.setRow .nm{flex:1; font-weight:600}
+.setAddRow{display:flex; gap:8px; margin-top:8px}
+.setAddRow input, .setAddRow select{flex:1; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff}
+.setAddRow .pbtn2{min-height:38px; padding:6px 14px; font-size:.82rem; white-space:nowrap}
+.stuDelBtn{font:inherit; font-size:.72rem; padding:2px 8px; margin-right:6px; border-radius:7px; border:1px solid #e3bcbc; background:#f9e9e9; color:#a33; cursor:pointer; vertical-align:middle; transition:all .2s ease}
+.stuDelBtn:hover{background:#a33; color:#fff}
+#toastBox{position:fixed; bottom:70px; right:50%; transform:translateX(50%); z-index:500; background:linear-gradient(135deg,var(--teal),var(--teal-deep)); color:#fff; font-weight:700; font-size:.88rem; padding:12px 26px; border-radius:999px; box-shadow:0 8px 24px rgba(47,111,102,.45); opacity:0; pointer-events:none; transition:opacity .3s ease, transform .3s ease}
+#toastBox.show{opacity:1; transform:translateX(50%) translateY(-6px)}
 #logoutBtn{position:fixed; bottom:14px; left:14px; z-index:50; font:inherit; font-size:.8rem; padding:8px 18px; min-height:40px; border:1px solid var(--line); border-radius:999px; background:var(--card); color:var(--muted); cursor:pointer; box-shadow:var(--shadow); transition:all .25s ease}
 #logoutBtn:hover{color:#a33; border-color:#d9a0a0; transform:translateY(-2px)}
 
@@ -386,16 +404,33 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 <div class="bgDeco" aria-hidden="true"><span>📖</span><span>⭐</span><span>🕌</span><span>🎯</span><span>✏️</span><span>🌙</span></div>
 <div id="loginGate">
   <div class="card">
-    <h2>🕌 تسجيل الدخول</h2>
+    <h2>🕌 صفحة المعلم</h2>
     <p>صفحة المعلم محمد صالح العمير الأسمري</p>
-    <input type="password" id="pwd" placeholder="كلمة المرور" autocomplete="current-password">
-    <button id="loginBtn">دخول</button>
+    <div class="lgTabs">
+      <button id="lgTabIn" class="active">تسجيل دخول</button>
+      <button id="lgTabUp">تسجيل جديد</button>
+    </div>
+    <div id="lgPaneIn">
+      <input type="text" id="luser" placeholder="اسم المستخدم" autocomplete="username">
+      <input type="password" id="pwd" placeholder="كلمة المرور" autocomplete="current-password">
+      <button id="loginBtn">دخول</button>
+    </div>
+    <div id="lgPaneUp" style="display:none">
+      <input type="text" id="ruser" placeholder="اسم المستخدم" autocomplete="username">
+      <input type="password" id="rpwd" placeholder="كلمة المرور (4 أحرف فأكثر)" autocomplete="new-password">
+      <input type="password" id="rpwd2" placeholder="تأكيد كلمة المرور" autocomplete="new-password">
+      <button id="regBtn">إنشاء الحساب</button>
+    </div>
     <div class="err" id="loginErr"></div>
+    <div class="okMsg" id="loginOk"></div>
+    <div class="lgNote">جميع الحسابات تشارك نفس بيانات المدرسة (الدرجات والكشوف).</div>
   </div>
 </div>
 <button id="logoutBtn" style="display:none">تسجيل الخروج</button>
+<div id="toastBox"></div>
 <div class="wrap" id="mainWrap" style="display:none">
   <header class="top">
+    <button id="settingsBtn" style="display:none">⚙️ إعداداتي</button>
     <h1>🕌 جدول المعلم وتوزيع المناهج والكشوف الأسبوعية 📖</h1>
     <div class="sub">المعلم: محمد صالح العمير الأسمري — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ</div>
   </header>
@@ -441,6 +476,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
       <span class="week-dates" id="sheetWeekDates"></span>
       <button class="pbtn2" id="pickerBtnS">اختيار تلقائي</button>
       <button class="pbtn2 ghost" id="addStuBtn">+ إضافة طالب</button>
+      <button class="pbtn2 ghost" id="bulkAddStuBtn">📋 إضافة جماعية</button>
       <span class="saved" id="savedMsg"></span>
     </div>
     <div style="overflow-x:auto" id="sheetWrap"></div>
@@ -523,39 +559,179 @@ async function pushMark(cls,w,si,ci,v){
     class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()
   });
 }
-/* الطلاب المضافون يدوياً لكل فصل (تُحفظ في قاعدة البيانات) */
+/* الطلاب المضافون/المحذوفون يدوياً لكل فصل (تُحفظ في قاعدة البيانات)
+   rosterx:<cls> بصيغة {extra:[...], removed:[...]} — والصيغة القديمة (مصفوفة) تُعتبر extra */
 const extraLoaded = {};
+const ROSTERX = {};      // cls -> {extra:[], removed:[]}
+const BASE_STUDENTS = {}; // نسخة ثابتة من الروستر الأساسي قبل أي تعديل
+function parseRosterX(val){
+  try{
+    const p = JSON.parse(val);
+    if(Array.isArray(p)) return {extra:p, removed:[]};
+    if(p && typeof p==='object') return {extra:Array.isArray(p.extra)?p.extra:[], removed:Array.isArray(p.removed)?p.removed:[]};
+  }catch(e){}
+  return {extra:[], removed:[]};
+}
+function applyRoster(cls){
+  const rx = ROSTERX[cls] || {extra:[], removed:[]};
+  const out = BASE_STUDENTS[cls].filter(n=>!rx.removed.includes(n));
+  rx.extra.forEach(n=>{ if(!out.includes(n)) out.push(n); });
+  ROSTERS[cls].students = out;
+}
+async function saveRoster(cls){
+  const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
+  await sb.from('marks').upsert({class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify(rx), updated_at:new Date().toISOString()});
+}
 async function fetchExtraStudents(cls){
   if(extraLoaded[cls]) return;
   extraLoaded[cls]=true;
+  if(!BASE_STUDENTS[cls]) BASE_STUDENTS[cls]=ROSTERS[cls].students.slice();
   const { data, error } = await sb.from('marks').select('*').eq('class_key','rosterx:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
   if(!error && data && data.length){
-    try{
-      JSON.parse(data[0].value).forEach(n=>{ if(!ROSTERS[cls].students.includes(n)) ROSTERS[cls].students.push(n); });
-    }catch(e){}
+    ROSTERX[cls] = parseRosterX(data[0].value);
+    applyRoster(cls);
   }
 }
+/* تنبيه منبثق سريع */
+function showToast(msg){
+  const t=document.getElementById('toastBox');
+  if(!t) return;
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(showToast._tm);
+  showToast._tm=setTimeout(()=>t.classList.remove('show'),2600);
+}
 
-/* ====== تسجيل الدخول ====== */
-const PASSWORD = "1448";
+/* ====== تسجيل الدخول والحسابات ====== */
+var CURRENT_USER = null;   // اسم المستخدم الحالي بعد الدخول
+var TEACHER_SET = null;    // {classes:[...], subjects:[...]} إعدادات المعلم
+/* الحسابات تُخزَّن في قاعدة البيانات: class_key='accts' (week=0, si=0, ci=0, value=JSON {users:[{u,p}]}) */
+let ACCTS = null;
+async function fetchAccts(){
+  if(ACCTS) return ACCTS;
+  try{
+    const r = await sb.from('marks').select('*').eq('class_key','accts').eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
+    if(!r.error && r.data && r.data.length){
+      try{
+        const p = JSON.parse(r.data[0].value);
+        if(p && Array.isArray(p.users)){ ACCTS={users:p.users}; return ACCTS; }
+      }catch(e){}
+    }
+  }catch(e){}
+  /* أول قراءة فارغة (أو محتوى تجريبي قديم): ازرع الحساب الافتراضي */
+  ACCTS = {users:[{u:'teacher', p:'1448'}]};
+  await saveAccts(ACCTS);
+  return ACCTS;
+}
+async function saveAccts(obj){
+  ACCTS = obj;
+  await sb.from('marks').upsert({class_key:'accts', week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify(obj), updated_at:new Date().toISOString()});
+}
+/* إعدادات المعلم (فصولي/موادي): class_key='tset:<user>' */
+function defaultTeacherSet(){
+  const subs=new Set();
+  Object.values(SCHED_CLASS_SUBJECTS).forEach(a=>a.forEach(s=>subs.add(s)));
+  return {classes:Object.keys(SCHED_CLASS_SUBJECTS), subjects:[...subs]};
+}
+async function fetchTset(){
+  let def;
+  try{ def = defaultTeacherSet(); }catch(e){ def = {classes:[], subjects:[]}; }
+  try{
+    const r = await sb.from('marks').select('*').eq('class_key','tset:'+CURRENT_USER).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
+    if(!r.error && r.data && r.data.length){
+      const p = JSON.parse(r.data[0].value);
+      TEACHER_SET = {
+        classes: (p && Array.isArray(p.classes) && p.classes.length) ? p.classes.slice() : def.classes,
+        subjects: (p && Array.isArray(p.subjects) && p.subjects.length) ? p.subjects.slice() : def.subjects
+      };
+      return;
+    }
+  }catch(e){}
+  TEACHER_SET = def.classes.length ? def : null;
+}
+async function saveTset(){
+  await sb.from('marks').upsert({class_key:'tset:'+CURRENT_USER, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify(TEACHER_SET), updated_at:new Date().toISOString()});
+}
 (function initLogin(){
   const gate=document.getElementById('loginGate');
   const wrap=document.getElementById('mainWrap');
   const out=document.getElementById('logoutBtn');
+  const err=document.getElementById('loginErr');
+  const ok=document.getElementById('loginOk');
+  const paneIn=document.getElementById('lgPaneIn'), paneUp=document.getElementById('lgPaneUp');
+  const tabIn=document.getElementById('lgTabIn'), tabUp=document.getElementById('lgTabUp');
+  function showPane(which){
+    tabIn.classList.toggle('active', which==='in');
+    tabUp.classList.toggle('active', which==='up');
+    paneIn.style.display = which==='in' ? 'block' : 'none';
+    paneUp.style.display = which==='up' ? 'block' : 'none';
+    err.textContent=''; ok.textContent='';
+  }
+  tabIn.onclick=()=>showPane('in');
+  tabUp.onclick=()=>showPane('up');
   function open(){
     gate.style.display='none'; wrap.style.display='block'; out.style.display='block';
+    const sbBtn=document.getElementById('settingsBtn');
+    if(sbBtn) sbBtn.style.display='block';
+    fetchTset();
   }
-  if(localStorage.getItem('teacher_auth')==='1'){ open(); }
-  function tryLogin(){
-    if(document.getElementById('pwd').value===PASSWORD){
-      localStorage.setItem('teacher_auth','1'); open();
-    } else {
-      document.getElementById('loginErr').textContent='كلمة المرور غير صحيحة';
-    }
+  if(localStorage.getItem('teacher_auth')==='1'){
+    CURRENT_USER = localStorage.getItem('teacher_user') || 'teacher';
+    open();
+  }
+  async function tryLogin(){
+    const u=document.getElementById('luser').value.trim();
+    const p=document.getElementById('pwd').value;
+    err.textContent=''; ok.textContent='';
+    if(!u || !p){ err.textContent='أدخل اسم المستخدم وكلمة المرور'; return; }
+    const btn=document.getElementById('loginBtn');
+    btn.disabled=true; btn.textContent='جارٍ التحقق…';
+    try{
+      const a = await fetchAccts();
+      const f = a.users.find(x=>x.u===u && x.p===p);
+      if(f){
+        CURRENT_USER=u;
+        localStorage.setItem('teacher_auth','1');
+        localStorage.setItem('teacher_user',u);
+        open();
+      } else {
+        err.textContent='اسم المستخدم أو كلمة المرور غير صحيحة';
+      }
+    }catch(e){ err.textContent='تعذر الاتصال بقاعدة البيانات — تحقق من الإنترنت'; }
+    btn.disabled=false; btn.textContent='دخول';
+  }
+  async function tryRegister(){
+    const u=document.getElementById('ruser').value.trim();
+    const p=document.getElementById('rpwd').value;
+    const p2=document.getElementById('rpwd2').value;
+    err.textContent=''; ok.textContent='';
+    if(!u){ err.textContent='أدخل اسم مستخدم'; return; }
+    if(p.length<4){ err.textContent='كلمة المرور يجب أن تكون 4 أحرف فأكثر'; return; }
+    if(p!==p2){ err.textContent='كلمتا المرور غير متطابقتين'; return; }
+    const btn=document.getElementById('regBtn');
+    btn.disabled=true; btn.textContent='جارٍ الإنشاء…';
+    try{
+      const a = await fetchAccts();
+      if(a.users.some(x=>x.u===u)){ err.textContent='اسم المستخدم مسجل مسبقاً — اختر اسماً آخر'; }
+      else{
+        a.users.push({u:u, p:p});
+        await saveAccts(a);
+        showPane('in');
+        document.getElementById('luser').value=u;
+        document.getElementById('pwd').value='';
+        ok.textContent='تم إنشاء الحساب بنجاح — سجّل دخولك الآن ✓';
+      }
+    }catch(e){ err.textContent='تعذر الاتصال بقاعدة البيانات — تحقق من الإنترنت'; }
+    btn.disabled=false; btn.textContent='إنشاء الحساب';
   }
   document.getElementById('loginBtn').onclick=tryLogin;
+  document.getElementById('regBtn').onclick=tryRegister;
   document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
-  out.onclick=()=>{ localStorage.removeItem('teacher_auth'); location.reload(); };
+  document.getElementById('luser').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
+  document.getElementById('rpwd2').addEventListener('keydown',e=>{ if(e.key==='Enter') tryRegister(); });
+  out.onclick=()=>{ localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user'); location.reload(); };
 })();
 
 /* ====== البيانات ====== */
@@ -1729,7 +1905,18 @@ async function fetchSchedule(){
     }catch(e){}
   }
 }
+/* قوائم محرر الجدول من إعدادات المعلم (مع الرجوع للافتراضي) */
+function teacherClasses(){
+  return (TEACHER_SET && Array.isArray(TEACHER_SET.classes) && TEACHER_SET.classes.length)
+    ? TEACHER_SET.classes : Object.keys(SCHED_CLASS_SUBJECTS);
+}
+function teacherSubjects(){
+  return (TEACHER_SET && Array.isArray(TEACHER_SET.subjects) && TEACHER_SET.subjects.length)
+    ? TEACHER_SET.subjects : defaultTeacherSet().subjects;
+}
 function openScheduleEditor(){
+  const clsList = teacherClasses();
+  const subjList = teacherSubjects();
   let html = '<tr><th>اليوم</th>' + Array.from({length:PERIODS},(_,i)=>`<th>الحصة ${i+1}</th>`).join("") + '</tr>';
   for(const d of DAYS){
     html += `<tr><td class="day">${d}</td>`;
@@ -1753,21 +1940,29 @@ function openScheduleEditor(){
     ss.innerHTML = "";
     if(!cs.value){ ss.disabled = true; return; }
     ss.disabled = false;
-    (SCHED_CLASS_SUBJECTS[cs.value]||[]).forEach(s=>{
+    const cell = SCHEDULE[cs.dataset.day] && SCHEDULE[cs.dataset.day][cs.dataset.period];
+    let list = subjList.slice();
+    /* أبقِ المادة المحفوظة ظاهرة حتى لو لم تعد ضمن قائمة موادي */
+    if(cell && cell.cls===cs.value && cell.subj && !list.includes(cell.subj)) list.push(cell.subj);
+    list.forEach(s=>{
       const o=document.createElement('option'); o.value=s; o.textContent=s; ss.appendChild(o);
     });
-    if(prev && (SCHED_CLASS_SUBJECTS[cs.value]||[]).includes(prev)) ss.value = prev;
+    if(prev && list.includes(prev)) ss.value = prev;
   };
   ov.querySelectorAll('.seCls').forEach(cs=>{
     const o0=document.createElement('option'); o0.value=""; o0.textContent="— فارغ —"; cs.appendChild(o0);
-    Object.keys(SCHED_CLASS_SUBJECTS).forEach(c=>{
+    const cell = SCHEDULE[cs.dataset.day] && SCHEDULE[cs.dataset.day][cs.dataset.period];
+    let cl = clsList.slice();
+    /* أبقِ الفصل المحفوظ ظاهراً حتى لو لم يعد ضمن قائمة فصولي */
+    if(cell && cell.cls && !cl.includes(cell.cls)) cl.push(cell.cls);
+    cl.forEach(c=>{
       const o=document.createElement('option'); o.value=c; o.textContent=c; cs.appendChild(o);
     });
-    const cell = SCHEDULE[cs.dataset.day] && SCHEDULE[cs.dataset.day][cs.dataset.period];
-    if(cell && SCHED_CLASS_SUBJECTS[cell.cls]) cs.value = cell.cls;
+    if(cell && cl.includes(cell.cls)) cs.value = cell.cls;
     fillSubj(cs, false);
-    if(cell && cs.value && (SCHED_CLASS_SUBJECTS[cell.cls]||[]).includes(cell.subj)){
-      subjOf(cs.dataset.day, cs.dataset.period).value = cell.subj;
+    if(cell && cs.value){
+      const ss = subjOf(cs.dataset.day, cs.dataset.period);
+      if([...ss.options].some(o=>o.value===cell.subj)) ss.value = cell.subj;
     }
     cs.addEventListener('change', ()=>fillSubj(cs, true));
   });
@@ -2067,7 +2262,8 @@ async function renderSheet(){
     const rowFill = (w!=='avg') ? ` <button class="fillBtn" data-fillrow="${si}" title="تعميم درجة على كل معايير الطالب هذا الأسبوع">⤵</button>` : '';
     const g = findGroupOf(cls,si);
     const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
-    html += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}</td>`;
+    const delBtn = ` <button class="stuDelBtn" data-delstu="${si}" title="حذف الطالب نهائياً مع كل بياناته">🗑</button>`;
+    html += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}${delBtn}</td>`;
     for(let ci=0;ci<CRITERIA.length;ci++){
       if(w==='avg'){
         const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
@@ -2103,6 +2299,10 @@ async function renderSheet(){
     });
     enableArrowNav(wrap2);
   }
+  // أزرار حذف الطلاب
+  wrap2.querySelectorAll('[data-delstu]').forEach(b=>{
+    b.onclick=()=>{ confirmDeleteStudent(cls, +b.dataset.delstu); };
+  });
   // أحداث التعديل
   document.querySelectorAll('#sheetWrap input').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
@@ -4809,11 +5009,10 @@ document.getElementById('addStuBtn').onclick=()=>{
     const nm=inp.value.trim();
     if(!nm){ inp.focus(); return; }
     if(ROSTERS[cls].students.includes(nm)){ inp.value=''; inp.placeholder='الاسم موجود مسبقاً!'; inp.focus(); return; }
-    ROSTERS[cls].students.push(nm);
-    const extra = ROSTERS[cls].students.slice(
-      cls==='g4'?23 : cls==='g5'?27 : cls==='g6'?20 : 27);
-    await sb.from('marks').upsert({class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
-      value:JSON.stringify(extra), updated_at:new Date().toISOString()});
+    const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
+    rx.extra.push(nm);
+    applyRoster(cls);
+    await saveRoster(cls);
     ov.remove();
     renderSheet();
   };
@@ -4821,6 +5020,198 @@ document.getElementById('addStuBtn').onclick=()=>{
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); });
   ov.querySelector('#nsCancel').onclick=()=>ov.remove();
 };
+
+/* ====== إضافة جماعية للطلاب (لصق قائمة أسماء) ====== */
+document.getElementById('bulkAddStuBtn').onclick=()=>{
+  const cls = curSheet;
+  const ov = openModal(`
+    <h3>📋 إضافة جماعية — ${ROSTERS[cls].class}</h3>
+    <div class="frow"><label>أسماء الطلاب</label>
+      <textarea id="bkNames" rows="9" placeholder="اكتب أو الصق الأسماء — كل سطر اسم طالب"></textarea></div>
+    <div class="pkBtns"><button class="pbtn2" id="bkSave">إضافة الكل</button><button class="pbtn2 ghost" id="bkCancel">إلغاء</button></div>`);
+  ov.querySelector('.modalCard').style.maxWidth='520px';
+  const ta=ov.querySelector('#bkNames');
+  ta.focus();
+  ov.querySelector('#bkSave').onclick=async ()=>{
+    const lines = ta.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
+    const seen = new Set();
+    const added = [];
+    lines.forEach(nm=>{
+      if(seen.has(nm)) return;              // مكرر داخل اللصق
+      seen.add(nm);
+      if(ROSTERS[cls].students.includes(nm)) return; // موجود مسبقاً
+      rx.extra.push(nm); added.push(nm);
+    });
+    if(!added.length){ ov.remove(); showToast('لا توجد أسماء جديدة للإضافة'); return; }
+    const btn=ov.querySelector('#bkSave');
+    btn.disabled=true; btn.textContent='جارٍ الإضافة…';
+    try{
+      applyRoster(cls);
+      await saveRoster(cls);
+      ov.remove();
+      showToast(`تمت إضافة ${added.length} طالباً ✓`);
+      renderSheet();
+    }catch(e){
+      btn.disabled=false; btn.textContent='إضافة الكل';
+      showToast('تعذر الحفظ — تحقق من الاتصال');
+    }
+  };
+  ov.querySelector('#bkCancel').onclick=()=>ov.remove();
+};
+
+/* ====== حذف طالب نهائياً مع إزاحة الفهارس ====== */
+function confirmDeleteStudent(cls, si){
+  const name = ROSTERS[cls].students[si];
+  if(name==null) return;
+  const ov = openModal(`
+    <h3 style="color:#a33">🗑 حذف طالب</h3>
+    <div class="note" style="background:#f9e9e9;border-color:#e3bcbc;color:#a33;font-weight:700;margin:0 0 12px">
+      ⚠️ تحذير نهائي: سيتم حذف الطالب «${escH(name)}» مع جميع درجاته ونقاطه وعضويته في المجموعات، ولا يمكن التراجع عن هذا الإجراء!
+    </div>
+    <div class="pkBtns">
+      <button class="pbtn2 danger" id="dsConfirm">🗑 حذف نهائي</button>
+      <button class="pbtn2 ghost" id="dsCancel">إلغاء</button>
+    </div>`);
+  ov.querySelector('#dsCancel').onclick=()=>ov.remove();
+  ov.querySelector('#dsConfirm').onclick=async ()=>{
+    const btn=ov.querySelector('#dsConfirm');
+    btn.disabled=true; btn.textContent='جارٍ الحذف…';
+    try{
+      await deleteStudent(cls, si);
+      ov.remove();
+      showToast(`تم حذف الطالب «${name}» نهائياً`);
+    }catch(e){
+      btn.disabled=false; btn.textContent='🗑 حذف نهائي';
+      showToast('تعذر الحذف — تحقق من الاتصال');
+    }
+  };
+}
+/* حذف صفوف طالب من مفتاح معيّن ثم إزاحة فهارس من بعده (تصاعدياً لتفادي أي قيد فريد) */
+async function shiftStudentRows(classKey, si){
+  const r = await sb.from('marks').select('week,student_idx,criterion_idx').eq('class_key', classKey);
+  if(r.error || !r.data) return;
+  const idxs = r.data.map(x=>x.student_idx);
+  const maxIdx = idxs.length ? Math.max(...idxs) : -1;
+  await sb.from('marks').delete().eq('class_key', classKey).eq('student_idx', si);
+  const present = new Set(idxs);
+  for(let j=si+1; j<=maxIdx; j++){
+    if(!present.has(j)) continue;
+    await sb.from('marks').update({student_idx:j-1, updated_at:new Date().toISOString()})
+      .eq('class_key', classKey).eq('student_idx', j);
+  }
+}
+async function deleteStudent(cls, si){
+  const name = ROSTERS[cls].students[si];
+  if(!BASE_STUDENTS[cls]) BASE_STUDENTS[cls]=ROSTERS[cls].students.slice();
+  /* 1) الروستر: من extra يُحذف، ومن الأساسي يُسجَّل في removed */
+  const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
+  if(rx.extra.includes(name)) rx.extra = rx.extra.filter(n=>n!==name);
+  else if(!rx.removed.includes(name)) rx.removed.push(name);
+  applyRoster(cls);
+  await saveRoster(cls);
+  /* 2) درجات الكشوف (class_key=cls) */
+  await shiftStudentRows(cls, si);
+  /* 3) نقاط الطلاب (spt:<cls>) */
+  await shiftStudentRows('spt:'+cls, si);
+  /* 4) المجموعات: حذف العضوية وإزاحة الفهارس وتصحيح القائد */
+  if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+  let changed=false;
+  groupsCache[cls].defs.forEach(d=>{
+    const before = JSON.stringify([d.members, d.leader]);
+    d.members = d.members.filter(m=>m!==si).map(m=> m>si ? m-1 : m);
+    if(d.leader===si) d.leader = d.members.length ? d.members[0] : null;
+    else if(d.leader!=null && d.leader>si) d.leader = d.leader-1;
+    if(JSON.stringify([d.members, d.leader])!==before) changed=true;
+  });
+  if(changed) await saveGroupDefs(cls);
+  /* 5) إبطال الكاشات وإعادة الجلب ثم الرسم */
+  marksCache[cls] = {loaded:false, data:{}};
+  sptsCache[cls] = {loaded:false, marks:{}};
+  await fetchClassMarks(cls);
+  await fetchStuPoints(cls);
+  if(curSheet===cls) renderSheet();
+  if(curGroup===cls) renderGroups();
+  if(curStuPts===cls) renderStuPoints();
+}
+
+/* ====== إعدادات المعلم (فصولي / موادي) ====== */
+const KNOWN_CLASSES = [
+  {id:'1م', label:'1م — الصف الأول المتوسط'},
+  {id:'2م', label:'2م — الصف الثاني المتوسط'},
+  {id:'3م', label:'3م — الصف الثالث المتوسط'},
+  {id:'1ث', label:'1ث — السنة الأولى المشتركة (أول ثانوي)'},
+  {id:'4ب', label:'4ب — الصف الرابع الابتدائي'},
+  {id:'5ب', label:'5ب — الصف الخامس الابتدائي'},
+  {id:'6ب', label:'6ب — الصف السادس الابتدائي'}
+];
+function openSettings(){
+  const cur = TEACHER_SET || defaultTeacherSet();
+  const draft = {classes:cur.classes.slice(), subjects:cur.subjects.slice()};
+  const listHtml = (arr, kind)=> arr.length
+    ? arr.map((x,i)=>`<div class="setRow"><span class="nm">${escH(x)}</span><button class="miniBtn del" data-kind="${kind}" data-i="${i}">حذف</button></div>`).join('')
+    : '<div class="ddEmpty">لا توجد عناصر بعد.</div>';
+  const clsOpts = KNOWN_CLASSES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+  const ov = openModal(`
+    <h3>⚙️ إعداداتي — ${escH(CURRENT_USER||'')}</h3>
+    <div class="setSecTitle">🕌 فصولي</div>
+    <div id="setClsList">${listHtml(draft.classes,'c')}</div>
+    <div class="setAddRow">
+      <select id="setClsSel">${clsOpts}</select>
+      <button class="pbtn2" id="setClsAdd">إضافة فصل</button>
+    </div>
+    <div class="setSecTitle">📚 موادي</div>
+    <div id="setSubjList">${listHtml(draft.subjects,'s')}</div>
+    <div class="setAddRow">
+      <input id="setSubjInp" placeholder="اسم المادة الجديدة">
+      <button class="pbtn2" id="setSubjAdd">إضافة مادة</button>
+    </div>
+    <div class="note" style="margin-top:12px">تُستخدم هذه القوائم في محرر جدول المعلم (✏️ تعديل الجدول).</div>
+    <div class="pkBtns">
+      <button class="pbtn2" id="setSave">حفظ الإعدادات</button>
+      <button class="pbtn2 ghost" id="setClose">إغلاق</button>
+    </div>`);
+  const refresh=()=>{
+    ov.querySelector('#setClsList').innerHTML = listHtml(draft.classes,'c');
+    ov.querySelector('#setSubjList').innerHTML = listHtml(draft.subjects,'s');
+    bindDel();
+  };
+  const bindDel=()=>{
+    ov.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{
+      const arr = b.dataset.kind==='c' ? draft.classes : draft.subjects;
+      arr.splice(+b.dataset.i,1);
+      refresh();
+    });
+  };
+  bindDel();
+  ov.querySelector('#setClsAdd').onclick=()=>{
+    const v=ov.querySelector('#setClsSel').value;
+    if(v && !draft.classes.includes(v)){ draft.classes.push(v); refresh(); }
+  };
+  const addSubj=()=>{
+    const inp=ov.querySelector('#setSubjInp');
+    const v=inp.value.trim();
+    if(v && !draft.subjects.includes(v)){ draft.subjects.push(v); inp.value=''; refresh(); }
+    inp.focus();
+  };
+  ov.querySelector('#setSubjAdd').onclick=addSubj;
+  ov.querySelector('#setSubjInp').addEventListener('keydown',e=>{ if(e.key==='Enter') addSubj(); });
+  ov.querySelector('#setClose').onclick=()=>ov.remove();
+  ov.querySelector('#setSave').onclick=async ()=>{
+    const btn=ov.querySelector('#setSave');
+    btn.disabled=true; btn.textContent='جارٍ الحفظ…';
+    try{
+      TEACHER_SET = {classes:draft.classes.slice(), subjects:draft.subjects.slice()};
+      await saveTset();
+      ov.remove();
+      showToast('تم حفظ الإعدادات ✓');
+    }catch(e){
+      btn.disabled=false; btn.textContent='حفظ الإعدادات';
+      showToast('تعذر الحفظ — تحقق من الاتصال');
+    }
+  };
+}
+document.getElementById('settingsBtn').onclick=openSettings;
 </script>
 </body>
 </html>
