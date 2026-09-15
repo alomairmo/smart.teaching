@@ -38193,7 +38193,7 @@ function lessonBookPages(cls,w,li){
   const rec = (BOOKDATA[cls]||{})[w+':'+li];
   if(!rec || !rec.p) return [];
   const a=rec.p[0], b=rec.p[1], arr=[];
-  for(let i=a;i<=b;i++) arr.push('books/'+cls+'/p'+i+'.jpg');
+  for(let i=a;i<=b;i++) arr.push('books/'+cls+'/p'+i+'.jpg?v=2');
   return arr;
 }
 
