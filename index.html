@@ -477,6 +477,7 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
       <button class="pbtn2" id="pickerBtnS">اختيار تلقائي</button>
       <button class="pbtn2 ghost" id="addStuBtn">+ إضافة طالب</button>
       <button class="pbtn2 ghost" id="bulkAddStuBtn">📋 إضافة جماعية</button>
+      <button class="pbtn2 ghost" id="sheetColsBtn">⚙️ تعديل الأعمدة</button>
       <span class="saved" id="savedMsg"></span>
     </div>
     <div style="overflow-x:auto" id="sheetWrap"></div>
@@ -675,7 +676,7 @@ async function saveTset(){
     gate.style.display='none'; wrap.style.display='block'; out.style.display='block';
     const sbBtn=document.getElementById('settingsBtn');
     if(sbBtn) sbBtn.style.display='block';
-    fetchTset();
+    fetchTset().then(()=>{ try{ rebuildTeacherViews(); }catch(e){} });
   }
   if(localStorage.getItem('teacher_auth')==='1'){
     CURRENT_USER = localStorage.getItem('teacher_user') || 'teacher';
@@ -2707,6 +2708,112 @@ const ROSTERS = {
 };
 const CRITERIA = ["الحضور","الواجب","المشاركة","الانضباط","القرآن حفظ","القرآن تلاوة"];
 
+/* ====== مطابقة مادة الخلية/التبويب مع مادة الدرس ====== */
+function subjMatch(subjName, sj){
+  const ns=(subjName||'').replace(/^ال/,'').replace(/\s+/g,'');
+  if(/^كيمياء[123]$/.test(ns)) return sj==='كيمياء';
+  if(ns==='علوم') return sj==='علوم';
+  if(ns==='قرآنوتفسير1' || ns==='دراساتإسلامية' || ns.indexOf('دراسات')===0) return sj!=='علوم' && sj!=='كيمياء';
+  return true;
+}
+/* مواد الفصل المرشحة: افتراضيات الفصل ∩ مواد المعلم + بنك الكيمياء لمرحلته */
+function classCandidateSubjects(cid){
+  let subjs;
+  try{ subjs = teacherSubjects(); }catch(e){ subjs = []; }
+  const base = (SCHED_CLASS_SUBJECTS[cid]||[]).slice();
+  const bank = {'1ث':'كيمياء 1','2ث':'كيمياء 2','3ث':'كيمياء 3'}[cid];
+  if(bank && !base.includes(bank)) base.push(bank);
+  return subjs.filter(s=>base.includes(s));
+}
+/* مفاتيح المناهج المرتبطة بفصول المعلم ومواده (من ⚙️ إعداداتي) */
+function visibleCurKeys(){
+  let classes;
+  try{ classes = teacherClasses(); }catch(e){ classes = Object.keys(SCHED_CLASS_SUBJECTS); }
+  const keys=[]; const seen={};
+  classes.forEach(cid=>{ classCandidateSubjects(cid).forEach(s=>{
+    let cell=null; try{ cell = schedCellFromSel(cid, s); }catch(e){}
+    if(cell && cell.cur && (typeof CURRICULA!=='undefined') && CURRICULA[cell.cur] && (typeof ROSTERS!=='undefined') && ROSTERS[cell.cur] && !seen[cell.cur]){ seen[cell.cur]=1; keys.push(cell.cur); }
+  }); });
+  return keys.length ? keys : Object.keys(ROSTERS);
+}
+
+/* ====== أعمدة الكشوف القابلة للتخصيص (لكل منهج) ====== */
+const SHEET_CFG = {}; // cls -> {loaded:bool, cols:[{n,max,def}]|null}
+function colsOf(cls){ const c=SHEET_CFG[cls]; return (c && c.cols && c.cols.length) ? c.cols : CRITERIA.map(n=>({n:n,max:5,def:5})); }
+function colCount(cls){ return colsOf(cls).length; }
+function colName(cls,ci){ const c=colsOf(cls)[ci]; return c ? c.n : ('معيار '+(ci+1)); }
+function colMax(cls,ci){ const c=colsOf(cls)[ci]; return c ? (+c.max||5) : 5; }
+function colDef(cls,ci){ const c=colsOf(cls)[ci]; return c ? c.def : 5; }
+async function fetchSheetCfg(cls){
+  try{
+    const r = await sb.from('marks').select('*').eq('class_key','sheetcfg:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    if(!r.error && r.data && r.data.length){
+      const v = JSON.parse(r.data[0].value);
+      if(v && Array.isArray(v.cols) && v.cols.length){ SHEET_CFG[cls]={loaded:true,cols:v.cols}; return; }
+    }
+  }catch(e){}
+  SHEET_CFG[cls]={loaded:true,cols:null};
+}
+async function saveSheetCfg(cls){
+  await sb.from('marks').upsert({class_key:'sheetcfg:'+cls, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify({cols:SHEET_CFG[cls].cols}), updated_at:new Date().toISOString()});
+}
+function openSheetColsEditor(cls){
+  const cols = colsOf(cls).map(c=>({n:c.n,max:c.max,def:c.def}));
+  const ov = openModal(`
+    <h3>⚙️ أعمدة كشف «${ROSTERS[cls].class}»</h3>
+    <div class="note">لكل عمود: الاسم ثم القيمة العظمى ثم القيمة الافتراضية (التي تُعبّأ تلقائياً في الخلايا الجديدة). يمكنك إضافة عمود جديد بالزر أسفله.</div>
+    <div id="scRows"></div>
+    <button class="pbtn2" id="scAdd" style="margin-top:8px">+ إضافة عمود</button>
+    <div class="pkBtns" style="margin-top:14px">
+      <button class="pbtn2" id="scSave">حفظ الأعمدة</button>
+      <button class="pbtn2 ghost" id="scCancel">إلغاء</button>
+    </div>`);
+  const rowsEl = ov.querySelector('#scRows');
+  const draw = ()=>{
+    rowsEl.innerHTML = cols.map((c,i)=>`
+    <div class="frow" style="gap:6px;align-items:center;margin-bottom:6px">
+      <input data-f="n" data-i="${i}" value="${String(c.n).replace(/"/g,'&quot;')}" placeholder="اسم العمود" style="flex:2">
+      <input data-f="max" data-i="${i}" value="${c.max}" inputmode="numeric" title="القيمة العظمى" placeholder="العظمى" style="flex:1">
+      <input data-f="def" data-i="${i}" value="${c.def}" inputmode="text" title="القيمة الافتراضية" placeholder="الافتراضية" style="flex:1">
+    </div>`).join('');
+  };
+  draw();
+  rowsEl.addEventListener('input', e=>{
+    const t=e.target; if(!t.dataset.f) return;
+    const i=+t.dataset.i;
+    if(t.dataset.f==='n') cols[i].n=t.value;
+    else { const n=parseFloat(t.value); cols[i][t.dataset.f]=isNaN(n)?t.value:n; }
+  });
+  ov.querySelector('#scAdd').onclick=()=>{ cols.push({n:'معيار جديد',max:5,def:5}); draw(); };
+  ov.querySelector('#scCancel').onclick=()=>ov.remove();
+  ov.querySelector('#scSave').onclick=async ()=>{
+    const clean = cols.filter(c=>String(c.n).trim()).map(c=>({
+      n:String(c.n).trim(),
+      max:+c.max||5,
+      def:(String(c.def).trim()==='غ') ? 'غ' : (isNaN(parseFloat(c.def)) ? 5 : parseFloat(c.def))
+    }));
+    if(!clean.length){ showToast('أضف عموداً واحداً على الأقل'); return; }
+    SHEET_CFG[cls]={loaded:true,cols:clean};
+    const btn=ov.querySelector('#scSave'); btn.disabled=true; btn.textContent='جارٍ الحفظ…';
+    try{ await saveSheetCfg(cls); showToast('تم حفظ الأعمدة ✓'); ov.remove(); }
+    catch(e){ btn.disabled=false; btn.textContent='حفظ الأعمدة'; showToast('تعذر الحفظ — تحقق من الاتصال'); }
+    renderSheet();
+  };
+}
+
+/* ====== إعادة بناء كل ما يتبع إعدادات المعلم ====== */
+function rebuildTeacherViews(){
+  try{ buildCurriculumSection(); }catch(e){}
+  try{ buildSheetTabs(); }catch(e){}
+  try{ buildGroupTabs(); }catch(e){}
+  try{ buildSptsTabs(); }catch(e){}
+  try{ buildLessonTabs(); }catch(e){}
+  try{ if(typeof renderSchedule==='function') renderSchedule(); }catch(e){}
+  try{ renderSheet(); }catch(e){}
+}
+
+
 /* ====== الجدول المعتمد ====== */
 const DAYS = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس"];
 const PERIODS = 7;
@@ -2813,9 +2920,10 @@ function renderSchedule(){
       if(cell.cur){
         const wd = weekData(cell.cur, w);
         if(wd && wd.lessons && wd.lessons.length){
-          const items = wd.lessons.map((l,li)=>({l,li}));
+          let items = wd.lessons.map((l,li)=>({l,li}));
+          items = items.filter(x=>{ const sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(cell.cur,w,x.li,x.l):''; return subjMatch(cell.subj, sj); });
           if(typeof isQuranLesson==='function') items.sort((a,b)=> (isQuranLesson(a.l)?1:0)-(isQuranLesson(b.l)?1:0));
-          lessonHtml = `<div class="lesson"><b>${weekLabel(w)}</b>${items.map(x=>{ const sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(cell.cur,w,x.li,x.l):''; return `<div class="lessonLink" data-cls="${cell.cur}" data-week="${w}" data-li="${x.li}">${sj?`<span class="lsubj" style="background:${LSUBJ_COLORS[sj]||'#777'}">${sj}</span>`:'• '}${x.l}</div>`; }).join("")}</div>`;
+          lessonHtml = items.length ? `<div class="lesson"><b>${weekLabel(w)}</b>${items.map(x=>{ const sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(cell.cur,w,x.li,x.l):''; return `<div class="lessonLink" data-cls="${cell.cur}" data-week="${w}" data-li="${x.li}">${sj?`<span class="lsubj" style="background:${LSUBJ_COLORS[sj]||'#777'}">${sj}</span>`:'• '}${x.l}</div>`; }).join("")}</div>` : `<div class="lesson">—</div>`;
         } else {
           lessonHtml = `<div class="lesson">—</div>`;
         }
@@ -2973,55 +3081,106 @@ function openScheduleEditor(){
 }
 document.getElementById('editSchedBtn').onclick = openScheduleEditor;
 
-/* ====== تبويبات توزيع المنهج ====== */
-const tabsEl = document.getElementById('tabs');
-const panesEl = document.getElementById('panes');
-Object.entries(CURRICULA).forEach(([key,c],i)=>{
-  const b=document.createElement('button');
-  b.className='tab'+(i===0?' active':'');
-  b.textContent=c.tabLabel || c.grade;
-  b.onclick=()=>{
-    document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('#panes .pane').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    document.getElementById('pane-'+key).classList.add('active');
-  };
-  tabsEl.appendChild(b);
-
-  const pane=document.createElement('div');
-  pane.className='pane'+(i===0?' active':'');
-  pane.id='pane-'+key;
-  let html=`<div class="sub" style="margin-bottom:10px">${c.grade} — ${c.subject}</div>`;
+/* ====== تبويبات توزيع المنهج (تتبع فصول المعلم ومواده) ====== */
+function curBlockHtml(key, subjFilter){
+  const c = CURRICULA[key];
+  let h = `<div class="sub" style="margin-bottom:10px">${c.grade} — ${c.subject}${subjFilter?(' — '+subjFilter):''}</div>`;
   c.weeks.forEach(wd=>{
-    const exam = typeof wd.week==='number' && wd.week>=18;
     const holiday = typeof wd.week!=='number';
+    const exam = typeof wd.week==='number' && wd.week>=18;
     const isCur = typeof wd.week==='number' && wd.week===CUR_WEEK;
     const title = holiday ? (wd.lessons && wd.lessons[0] ? wd.lessons[0] : 'إجازة') : weekLabel(wd.week);
-    html += `<div class="weekcard${exam?' exam':''}${isCur?' curWeek':''}"${holiday?' style="background:#fdf6e8"':''}>
+    let items = (wd.lessons||[]).map((l,li)=>({l,li}));
+    if(subjFilter && !holiday) items = items.filter(x=>subjMatch(subjFilter, (typeof lessonSubjectOf==='function')?lessonSubjectOf(key,wd.week,x.li,x.l):''));
+    if(subjFilter && !holiday && !items.length) return;
+    if(holiday) items = items.filter((_,idx)=>idx>0);
+    h += `<div class="weekcard${exam?' exam':''}${isCur?' curWeek':''}"${holiday?' style="background:#fdf6e8"':''}>
       <h3>${title}${isCur?'<span class="badge" style="background:var(--teal);color:#fff">الأسبوع الحالي</span>':''}${exam?'<span class="badge">اختبارات</span>':''}${holiday?'<span class="badge">إجازة</span>':''}</h3>
       <div class="dates">${[wd.hijri,wd.gregorian].filter(Boolean).join(" — ")}</div>
-      <ul>${(wd.lessons||[]).map((l,li)=>({l,li})).filter((_,idx)=>!holiday||idx>0).map(x=>`<li class="lessonLink" data-cls="${key}" data-week="${wd.week}" data-li="${x.li}">${x.l}</li>`).join("")}</ul>
+      <ul>${items.map(x=>`<li class="lessonLink" data-cls="${key}" data-week="${wd.week}" data-li="${x.li}">${x.l}</li>`).join("")}</ul>
     </div>`;
   });
-  pane.innerHTML=html;
-  panesEl.appendChild(pane);
-});
-
+  return h;
+}
+function buildCurriculumSection(){
+  const tabsEl = document.getElementById('tabs');
+  const panesEl = document.getElementById('panes');
+  if(!tabsEl || !panesEl) return;
+  tabsEl.innerHTML=''; panesEl.innerHTML='';
+  let classes;
+  try{ classes = teacherClasses(); }catch(e){ classes = Object.keys(SCHED_CLASS_SUBJECTS); }
+  const groups = [];
+  classes.forEach(cid=>{
+    const links=[]; const seen={};
+    classCandidateSubjects(cid).forEach(s=>{
+      let cell=null; try{ cell = schedCellFromSel(cid, s); }catch(e){}
+      if(cell && cell.cur && CURRICULA[cell.cur] && !seen[cell.cur+':'+s]){ seen[cell.cur+':'+s]=1; links.push({subj:s, cur:cell.cur}); }
+    });
+    if(links.length) groups.push({cid:cid, links:links});
+  });
+  if(!groups.length){
+    panesEl.innerHTML = '<div class="ddEmpty" style="padding:24px">لا توجد مناهج مرتبطة بفصولك وموادك الحالية — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
+    return;
+  }
+  groups.forEach((g,gi)=>{
+    const kl = (typeof KNOWN_CLASSES!=='undefined' ? (KNOWN_CLASSES.find(k=>k.id===g.cid)||{}).label : null);
+    const b = document.createElement('button');
+    b.className = 'tab'+(gi===0?' active':'');
+    b.textContent = kl || g.cid;
+    b.onclick = ()=>{
+      document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('#panes .pane').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      document.getElementById('cpane-'+gi).classList.add('active');
+    };
+    tabsEl.appendChild(b);
+    const pane = document.createElement('div');
+    pane.className = 'pane'+(gi===0?' active':'');
+    pane.id = 'cpane-'+gi;
+    const curs = []; const seenC = {};
+    g.links.forEach(l=>{ if(!seenC[l.cur]){ seenC[l.cur]=1; curs.push(l.cur); } });
+    const subs = [{all:true, label:'جميع المواد'}].concat(g.links.map(l=>({all:false, label:l.subj, cur:l.cur})));
+    let inner = '<div class="tabs subTabs" style="margin-bottom:12px">';
+    subs.forEach((s,si)=>{ inner += `<button class="tab${si===0?' active':''}" data-sub="${si}">${s.label}</button>`; });
+    inner += '</div>';
+    subs.forEach((s,si)=>{
+      inner += `<div class="subPane"${si===0?'':' style="display:none"'} data-sp="${si}">`;
+      if(s.all){ curs.forEach(ck=>{ inner += curBlockHtml(ck, null); }); }
+      else { inner += curBlockHtml(s.cur, s.label); }
+      inner += '</div>';
+    });
+    pane.innerHTML = inner;
+    panesEl.appendChild(pane);
+    pane.querySelectorAll('.subTabs .tab').forEach(tb=>{
+      tb.onclick = ()=>{
+        pane.querySelectorAll('.subTabs .tab').forEach(x=>x.classList.remove('active'));
+        tb.classList.add('active');
+        pane.querySelectorAll('.subPane').forEach(sp=>{ sp.style.display = (sp.dataset.sp===tb.dataset.sub)?'':'none'; });
+      };
+    });
+  });
+}
 /* ====== الكشوف الأسبوعية ====== */
 const sheetKeys = Object.keys(ROSTERS);
 let curSheet = sheetKeys[0];
 const sheetTabsEl = document.getElementById('sheetTabs');
-sheetKeys.forEach((k,i)=>{
-  const b=document.createElement('button');
-  b.className='tab'+(i===0?' active':'');
-  b.textContent=ROSTERS[k].class;
-  b.onclick=()=>{
-    document.querySelectorAll('#sheetTabs .tab').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    curSheet=k; renderSheet();
-  };
-  sheetTabsEl.appendChild(b);
-});
+function buildSheetTabs(){
+  const keys = visibleCurKeys();
+  if(!keys.includes(curSheet)) curSheet = keys[0];
+  sheetTabsEl.innerHTML='';
+  keys.forEach((k,i)=>{
+    const b=document.createElement('button');
+    b.className='tab'+(k===curSheet?' active':'');
+    b.textContent=ROSTERS[k].class;
+    b.onclick=()=>{
+      document.querySelectorAll('#sheetTabs .tab').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      curSheet=k; renderSheet();
+    };
+    sheetTabsEl.appendChild(b);
+  });
+}
+buildSheetTabs();
 
 const sheetSel = document.getElementById('sheetWeekSel');
 WEEKS.forEach(w=>{
@@ -3036,19 +3195,21 @@ WEEKS.forEach(w=>{
 }
 sheetSel.value = CUR_WEEK;
 sheetSel.addEventListener('change', renderSheet);
+document.getElementById('sheetColsBtn').onclick=()=>openSheetColsEditor(curSheet);
 
 /* قراءة الدرجات من الذاكرة المؤقتة (المصدر: قاعدة البيانات) */
 function getMark(cls,w,si,ci){
   const d = marksCache[cls] && marksCache[cls].data;
   const m = d && d[w] ? d[w] : {};
-  return (m[si] && m[si][ci] !== undefined) ? m[si][ci] : 5;
+  return (m[si] && m[si][ci] !== undefined) ? m[si][ci] : colDef(cls,ci);
 }
 function isAbsent(v){ return v==='غ' || v==='غائب'; }
 function markNum(v){ return isAbsent(v) ? 0 : (+v||0); }
 /* لون متدرج: 0 أحمر ← 2.5 كهرماني ← 5 أخضر */
-function markColor(v){
+function markColor(v,mx){
   if(isAbsent(v)) return '';
-  v=Math.max(0,Math.min(5,+v||0));
+  mx=+mx||5;
+  v=Math.max(0,Math.min(mx,+v||0))*(5/mx);
   const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
   const c1=[224,102,102], c2=[240,180,76], c3=[87,167,115]; // أحمر، كهرماني، أخضر
   let rgb;
@@ -3077,16 +3238,16 @@ function studentValue(cls,w,si,col){
     return n===0?0:sum/n;
   }
   if(col==='total'){
-    let s=0; for(let ci=0;ci<CRITERIA.length;ci++) s+=markNum(getMark(cls,w,si,ci)); return s;
+    let s=0; for(let ci=0;ci<colCount(cls);ci++) s+=markNum(getMark(cls,w,si,ci)); return s;
   }
   return markNum(getMark(cls,w,si,+col));
 }
 function avgOf(cls,si){
   let sum=0, mx=0;
-  WEEKS.forEach(wk=>{ for(let ci=0;ci<CRITERIA.length;ci++){
+  WEEKS.forEach(wk=>{ for(let ci=0;ci<colCount(cls);ci++){
     const v=getMark(cls,wk,si,ci);
     if(isAbsent(v)) continue; // الغياب لا يدخل في المتوسط
-    sum+=+v; mx+=5;
+    sum+=+v; mx+=colMax(cls,ci);
   }});
   return mx===0 ? 0 : Math.round(sum/mx*1000)/10;
 }
@@ -3100,7 +3261,7 @@ function enableArrowNav(wrapEl){
       e.preventDefault();
       const inputs=[...wrapEl.querySelectorAll('input[data-ci]')];
       const idx=inputs.indexOf(inp);
-      const cols=CRITERIA.length;
+      const cols=(inputs.length?(Math.max.apply(null,inputs.map(x=>+x.dataset.ci||0))+1):CRITERIA.length);
       const row=Math.floor(idx/cols), col=idx%cols;
       let r=row, c=col;
       // في اتجاه RTL: السهم الأيسر يتقدم للعمود التالي، والأيمن يرجع للسابق
@@ -3135,7 +3296,7 @@ function askFillValue(title, cb){
 
 /* تعميم عمود كامل (معيار واحد على كل الطلاب/المجموعات) */
 async function fillColumn(cls,w,ci,mode){
-  askFillValue(`تعميم عمود «${CRITERIA[ci]}» — ${weekLabel(w)}`, async (v)=>{
+  askFillValue(`تعميم عمود «${colName(cls,ci)}» — ${weekLabel(w)}`, async (v)=>{
     if(mode==='students'){
       const store=marksCache[cls].data;
       if(!store[w]) store[w]={};
@@ -3178,7 +3339,7 @@ async function fillRow(cls,w,target,mode){
       const msg=document.getElementById('savedMsg');
       msg.textContent='جارٍ التعميم والحفظ…';
       try{
-        for(let ci=0;ci<CRITERIA.length;ci++){
+        for(let ci=0;ci<colCount(cls);ci++){
           store[w][target][ci]=v;
           await pushMark(cls,w,target,ci,v);
           if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,target,ci);
@@ -3209,20 +3370,21 @@ async function renderSheet(){
     await fetchClassMarks(cls);
     if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
     await fetchExtraStudents(cls);
+    if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   }
   const students = ROSTERS[cls].students;
 
   // تواريخ الأسبوع
   let dates="";
   if(w!=='avg'){
-    const map={ 'g4':'g4','g5':'g5','g6':'g6','sec1':'sec1' };
-    const wd = weekData(map[cls], w);
+    const wd = weekData(cls, w) || weekData('g4', w);
     if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
   }
   document.getElementById('sheetWeekDates').textContent = dates;
 
-  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
-  const headers = ['اسم الطالب/ة', ...CRITERIA.map(c=>c+' (5)'), w==='avg'?'المتوسط (100)':'المجموع (30)'];
+  const __cc = colsOf(cls);
+  const cols = ['name', ...__cc.map((_,i)=>String(i)), 'total'];
+  const headers = ['اسم الطالب/ة', ...__cc.map(c=>c.n+' ('+c.max+')'), w==='avg'?'المتوسط (100)':'المجموع ('+__cc.reduce((s,c)=>s+(+c.max||0),0)+')'];
 
   let order = students.map((_,i)=>i);
   if(sortState.col!==null){
@@ -3248,13 +3410,13 @@ async function renderSheet(){
     const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
     const delBtn = ` <button class="stuDelBtn" data-delstu="${si}" title="حذف الطالب نهائياً مع كل بياناته">🗑</button>`;
     html += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}${delBtn}</td>`;
-    for(let ci=0;ci<CRITERIA.length;ci++){
+    for(let ci=0;ci<colCount(cls);ci++){
       if(w==='avg'){
         const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
-        html += `<td style="${markColor(v)}" class="${markClass(v)}">${v}</td>`;
+        html += `<td style="${markColor(v,colMax(cls,ci))}" class="${markClass(v)}">${v}</td>`;
       } else {
         const v = getMark(cls,w,si,ci);
-        html += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
+        html += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v,colMax(cls,ci))}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
       }
     }
     const tot = w==='avg' ? avgOf(cls,si) : studentValue(cls,w,si,'total');
@@ -3333,17 +3495,23 @@ let curGroup = sheetKeys[0];
 let gSortState = {col:null, dir:1};
 
 const groupTabsEl = document.getElementById('groupTabs');
-sheetKeys.forEach((k,i)=>{
-  const b=document.createElement('button');
-  b.className='tab'+(i===0?' active':'');
-  b.textContent=ROSTERS[k].class;
-  b.onclick=()=>{
-    document.querySelectorAll('#groupTabs .tab').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    curGroup=k; renderGroups();
-  };
-  groupTabsEl.appendChild(b);
-});
+function buildGroupTabs(){
+  const keys = visibleCurKeys();
+  if(!keys.includes(curGroup)) curGroup = keys[0];
+  groupTabsEl.innerHTML='';
+  keys.forEach((k,i)=>{
+    const b=document.createElement('button');
+    b.className='tab'+(k===curGroup?' active':'');
+    b.textContent=ROSTERS[k].class;
+    b.onclick=()=>{
+      document.querySelectorAll('#groupTabs .tab').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      curGroup=k; renderGroups();
+    };
+    groupTabsEl.appendChild(b);
+  });
+}
+buildGroupTabs();
 const groupWeekSel = document.getElementById('groupWeekSel');
 WEEKS.forEach(w=>{
   const o=document.createElement('option');
@@ -3425,7 +3593,7 @@ async function syncGroupFromStudent(cls,w,si,ci){ /* لا شيء — نظام ا
 
 /* --- عرض جدول المجموعات --- */
 function groupTotal(cls,gid,w){
-  let s=0; for(let ci=0;ci<CRITERIA.length;ci++) s+=markNum(getGroupMark(cls,gid,w,ci)); return s;
+  let s=0; for(let ci=0;ci<colCount(cls);ci++) s+=markNum(getGroupMark(cls,gid,w,ci)); return s;
 }
 async function renderGroups(){
   const cls = curGroup;
@@ -3638,17 +3806,23 @@ let curStuPts = sheetKeys[0];
 let sptsSort = {col:null, dir:1};
 
 const sptsTabsEl = document.getElementById('sptsTabs');
-sheetKeys.forEach((k,i)=>{
-  const b=document.createElement('button');
-  b.className='tab'+(i===0?' active':'');
-  b.textContent=ROSTERS[k].class;
-  b.onclick=()=>{
-    document.querySelectorAll('#sptsTabs .tab').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    curStuPts=k; renderStuPoints();
-  };
-  sptsTabsEl.appendChild(b);
-});
+function buildSptsTabs(){
+  const keys = visibleCurKeys();
+  if(!keys.includes(curStuPts)) curStuPts = keys[0];
+  sptsTabsEl.innerHTML='';
+  keys.forEach((k,i)=>{
+    const b=document.createElement('button');
+    b.className='tab'+(k===curStuPts?' active':'');
+    b.textContent=ROSTERS[k].class;
+    b.onclick=()=>{
+      document.querySelectorAll('#sptsTabs .tab').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      curStuPts=k; renderStuPoints();
+    };
+    sptsTabsEl.appendChild(b);
+  });
+}
+buildSptsTabs();
 const sptsWeekSel = document.getElementById('sptsWeekSel');
 WEEKS.forEach(w=>{
   const o=document.createElement('option');
@@ -3897,7 +4071,7 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
   if(mode==='students' && clsO===undefined && sheetSel.value==='avg'){ alert('اختر أسبوعاً محدداً أولاً (وليس المتوسط).'); return; }
   if(mode==='groups' && !(groupsCache[cls] && groupsCache[cls].defs && groupsCache[cls].defs.length)){ alert('لا توجد مجموعات في هذا الفصل بعد.'); return; }
   pre = pre || {};
-  const critOpts = CRITERIA.map((c,i)=>`<option value="${i}"${pre.crit===i?' selected':''}>${c}</option>`).join('');
+  const critOpts = colsOf(cls).map((c,i)=>`<option value="${i}"${pre.crit===i?' selected':''}>${c.n}</option>`).join('');
   /* دروس الفصل التي لها أسئلة في QUIZZES */
   const qzCls = QUIZZES[cls] || {};
   const qzLessons = [];
@@ -3926,7 +4100,7 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
         <option value="random"${pre.method==='random'?' selected':''}>عشوائي</option>
         <option value="name"${pre.method==='name'?' selected':''}>ترتيب اسمي</option>
         <option value="total"${pre.method==='total'?' selected':''}>بحسب مجمل الدرجات</option>
-        ${mode==='students' ? CRITERIA.map((c,i)=>`<option value="col${i}"${pre.method==='col'+i?' selected':''}>بحسب درجة: ${c}</option>`).join('') : ''}
+        ${mode==='students' ? colsOf(cls).map((c,i)=>`<option value="col${i}"${pre.method==='col'+i?' selected':''}>بحسب درجة: ${c.n}</option>`).join('') : ''}
         <option value="manual"${pre.method==='manual'?' selected':''}>${mode==='students'?'طالب محدد بعينه':'مجموعة محددة بعينها'}</option>
       </select></div>
     <div class="frow"><label>اتجاه الترتيب</label>
@@ -4127,7 +4301,7 @@ function pickerNext(){
   }
   const ov = openModal(`
     <button class="pkMute" id="pkMute" title="كتم/تشغيل الصوت">${pkMuted?'🔇':'🔊'}</button>
-    <div class="pkSub">${p.mode==='students'?'الطالب':'المجموعة'} ${p.idx+1} من ${p.queue.length} — ${CRITERIA[p.crit]}</div>
+    <div class="pkSub">${p.mode==='students'?'الطالب':'المجموعة'} ${p.idx+1} من ${p.queue.length} — ${colName(p.cls,p.crit)}</div>
     <div class="pkName">${name}</div>
     ${sub?`<div class="pkSub">${sub}</div>`:''}
     ${p.quiz?'<div class="pkQuiz" id="pkQuiz"></div>':''}
@@ -37998,17 +38172,25 @@ function lessonBookPages(cls,w,li){
 
 /* تبويبات الفصول */
 const lessonTabsEl = document.getElementById('lessonTabs');
-sheetKeys.forEach((k,i)=>{
-  const b=document.createElement('button');
-  b.className='tab'+(i===0?' active':'');
-  b.textContent=ROSTERS[k].class;
-  b.onclick=()=>{
-    document.querySelectorAll('#lessonTabs .tab').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    curLesson=k; curLessonSubj=null; renderLessons();
-  };
-  lessonTabsEl.appendChild(b);
-});
+function buildLessonTabs(){
+  const keys = visibleCurKeys();
+  if(!keys.includes(curLesson)) curLesson = keys[0];
+  lessonTabsEl.innerHTML='';
+  keys.forEach((k,i)=>{
+    const b=document.createElement('button');
+    b.className='tab'+(k===curLesson?' active':'');
+    b.textContent=ROSTERS[k].class;
+    b.onclick=()=>{
+      document.querySelectorAll('#lessonTabs .tab').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      curLesson=k; curLessonSubj=null; renderLessons();
+    };
+    lessonTabsEl.appendChild(b);
+  });
+}
+buildLessonTabs();
+/* بناء أولي لكل العروض التابعة لإعدادات المعلم بعد اكتمال تحميل الصفحة كلها */
+window.addEventListener('load', ()=>{ try{ rebuildTeacherViews(); }catch(e){} });
 
 async function renderLessons(){
   const cls = curLesson;
@@ -38241,7 +38423,7 @@ let quizSession = null;
    opts: {studentsOnly, hideWeek, fixedWeek, defAddPts, title} — تُستخدم من تبويب نقاط الطلاب */
 function qsOpenSettings(cls,w,li,box,opts){
   opts = opts || {};
-  const critOpts = CRITERIA.map((c,i)=>`<option value="${i}"${i===2?' selected':''}>${c}</option>`).join('');
+  const critOpts = colsOf(cls).map((c,i)=>`<option value="${i}"${i===2?' selected':''}>${c.n}</option>`).join('');
   /* دروس هذا الفصل التي لها أسئلة، مع مادة كل درس */
   const qzCls = QUIZZES[cls] || {};
   const qzLessons = [];
@@ -38276,7 +38458,7 @@ function qsOpenSettings(cls,w,li,box,opts){
         <option value="name">ترتيب اسمي</option>
         <option value="total">بحسب مجمل الدرجات</option>
         <option value="points">بحسب نقاط الطالب (هذا الأسبوع)</option>
-        ${CRITERIA.map((c,i)=>`<option value="col${i}">بحسب درجة: ${c}</option>`).join('')}
+        ${colsOf(cls).map((c,i)=>`<option value="col${i}">بحسب درجة: ${c.n}</option>`).join('')}
       </select></div>
     <div class="frow" id="qsRotateRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="qsRotate" style="width:20px;height:20px;accent-color:var(--teal)"> 👥 بالتناوب: طالب من كل مجموعة بالتناوب</label></div>
@@ -38402,7 +38584,7 @@ function qsBuildPanel(container){
   }
   panel.innerHTML = `
     <div class="qsTop">
-      <span class="qsTitle">🎯 اختبار — ${ROSTERS[s.cls].class} — تُسجَّل في: ${weekLabel(s.w)} — المعيار: ${CRITERIA[s.crit]}</span>
+      <span class="qsTitle">🎯 اختبار — ${ROSTERS[s.cls].class} — تُسجَّل في: ${weekLabel(s.w)} — المعيار: ${colName(s.cls,s.crit)}</span>
       <button class="pbtn2 ghost" id="qsFull" style="font-size:.85rem">⛶ ملء الشاشة</button>
       <button class="pbtn2 danger" id="qsEnd" style="font-size:.85rem">✖ إنهاء</button>
     </div>
@@ -39133,6 +39315,7 @@ async function renderLpSheet(cls, w, pane){
     await fetchClassMarks(cls);
     if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
     await fetchExtraStudents(cls);
+    if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   }
   const students = ROSTERS[cls].students;
   let dates="";
@@ -39141,8 +39324,9 @@ async function renderLpSheet(cls, w, pane){
     if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
   }
   datesEl.textContent = dates;
-  const cols = ['name', ...CRITERIA.map((_,i)=>String(i)), 'total'];
-  const headers = ['اسم الطالب/ة', ...CRITERIA.map(c=>c+' (5)'), w==='avg'?'المتوسط (100)':'المجموع (30)'];
+  const __cc = colsOf(cls);
+  const cols = ['name', ...__cc.map((_,i)=>String(i)), 'total'];
+  const headers = ['اسم الطالب/ة', ...__cc.map(c=>c.n+' ('+c.max+')'), w==='avg'?'المتوسط (100)':'المجموع ('+__cc.reduce((s,c)=>s+(+c.max||0),0)+')'];
   let order = students.map((_,i)=>i);
   if(lpSheetSort.col!==null){
     order.sort((a,b)=>{
@@ -39164,13 +39348,13 @@ async function renderLpSheet(cls, w, pane){
     const g = findGroupOf(cls,si);
     const gTag = g ? `<span class="grpTag">${escH(g.name)}</span>` : '';
     h += `<tr><td>${r+1}</td><td class="name">${students[si]}${gTag}${rowFill}</td>`;
-    for(let ci=0;ci<CRITERIA.length;ci++){
+    for(let ci=0;ci<colCount(cls);ci++){
       if(w==='avg'){
         const v = Math.round(studentValue(cls,w,si,String(ci))*10)/10;
-        h += `<td style="${markColor(v)}" class="${markClass(v)}">${v}</td>`;
+        h += `<td style="${markColor(v,colMax(cls,ci))}" class="${markClass(v)}">${v}</td>`;
       } else {
         const v = getMark(cls,w,si,ci);
-        h += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v)}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
+        h += `<td><input type="text" inputmode="text" class="${markClass(v)}" style="${markColor(v,colMax(cls,ci))}" value="${v}" data-si="${si}" data-ci="${ci}" title="درجة 0-7 أو غ للغياب"></td>`;
       }
     }
     const tot = w==='avg' ? avgOf(cls,si) : studentValue(cls,w,si,'total');
@@ -39838,6 +40022,7 @@ function openSettings(){
     try{
       TEACHER_SET = {classes:draft.classes.slice(), subjects:draft.subjects.slice()};
       await saveTset();
+      try{ rebuildTeacherViews(); }catch(e){}
       ov.remove();
       showToast('تم حفظ الإعدادات ✓');
     }catch(e){
