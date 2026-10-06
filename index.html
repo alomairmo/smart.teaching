@@ -4290,8 +4290,9 @@ function openPicker(mode, clsO, wO, pre){ /* mode: 'students' | 'groups' */
 }
 /* سحب سؤال عشوائي من المصدر المختار حسب النوع، بدون تكرار حتى تنفد ثم تُعاد */
 function pkDrawQuestion(p){
-  let pool = (((QUIZZES[p.cls]||{})[p.quiz.src]) || []).slice();
-  /* دمج أسئلة المعلم المخصصة (مع تحميل كسول لأول مرة) */
+  let pool = quizBase(p.cls, p.quiz.src).slice();
+  /* دمج أسئلة المعلم المخصصة وتعديلاته (مع تحميل كسول لأول مرة) */
+  if(!(QOVR[p.cls] && QOVR[p.cls].loaded)) fetchQOverrides(p.cls);
   if(!(CUSTOMQ[p.cls] && CUSTOMQ[p.cls][p.quiz.src])) fetchCustomQuestions(p.cls,p.quiz.src);
   pool = pool.concat(cqList(p.cls,p.quiz.src));
   if(p.quiz.type==='mcq') pool = pool.filter(it=>it.t==='mcq');
@@ -38369,7 +38370,8 @@ function qeWeekShort(w){
   if(w===19) return 'نهائية';
   return 'أ'+w;
 }
-async function renderQuranEval(cls, wrapEl){
+async function renderQuranEval(cls, wrapEl, rerender){
+  const rer = rerender || (()=>renderLessons());
   wrapEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
   if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
   await fetchExtraStudents(cls);
@@ -38444,14 +38446,14 @@ async function renderQuranEval(cls, wrapEl){
 
   wrapEl.innerHTML = toolbar + body;
 
-  wrapEl.querySelector('#qeModeSheet').onclick=()=>{ qeMode='sheet'; renderLessons(); };
-  wrapEl.querySelector('#qeModeForm').onclick=()=>{ qeMode='form'; renderLessons(); };
-  wrapEl.querySelectorAll('[data-qeshow]').forEach(b=>{ b.onclick=()=>{ qeShow=b.dataset.qeshow; renderLessons(); }; });
+  wrapEl.querySelector('#qeModeSheet').onclick=()=>{ qeMode='sheet'; rer(); };
+  wrapEl.querySelector('#qeModeForm').onclick=()=>{ qeMode='form'; rer(); };
+  wrapEl.querySelectorAll('[data-qeshow]').forEach(b=>{ b.onclick=()=>{ qeShow=b.dataset.qeshow; rer(); }; });
   const nameInp = wrapEl.querySelector('#qeNameInp');
   if(nameInp){
     nameInp.addEventListener('change', ()=>{
       const i = students.indexOf(nameInp.value.trim());
-      if(i>=0){ qeStudent=i; renderLessons(); }
+      if(i>=0){ qeStudent=i; rer(); }
     });
   }
   wrapEl.querySelectorAll('input.qeInp').forEach(inp=>{
@@ -38529,10 +38531,56 @@ async function deleteCustomQuestion(cls,key,cid){
   if(r.error) throw r.error;
   if(CUSTOMQ[cls] && CUSTOMQ[cls][key]) CUSTOMQ[cls][key]=CUSTOMQ[cls][key].filter(x=>String(x._cid)!==String(cid));
 }
-/* نافذة إضافة/تعديل سؤال مخصص — edit: عنصر سؤال موجود (يحوي _cid) أو null للإضافة */
-function openAddQuestionModal(cls,w,li,onAdded,edit){
+
+/* ====== تعديلات المعلم على الأسئلة الجاهزة (overrides) ======
+   تُحفظ في جدول marks تحت class_key='qovr:<cls>' بصيغة {"w:li":{"0":item}} — تُطبَّق على QUIZZES عند العرض */
+const QOVR = {}; // cls -> {loaded:bool, data:{"w:li":{"bi":item}}}
+async function fetchQOverrides(cls){
+  if(QOVR[cls] && QOVR[cls].loaded) return;
+  try{
+    const r = await sb.from('marks').select('*').eq('class_key','qovr:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    if(!r.error && r.data && r.data.length){
+      const v = JSON.parse(r.data[0].value);
+      QOVR[cls]={loaded:true, data:(v && typeof v==='object')?v:{}};
+      return;
+    }
+  }catch(e){}
+  QOVR[cls]={loaded:true, data:{}};
+}
+async function saveQOverrides(cls){
+  await sb.from('marks').upsert({class_key:'qovr:'+cls, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify(QOVR[cls].data), updated_at:new Date().toISOString()});
+}
+function qovrItem(item){
+  const it={t:item.t, q:item.q};
+  if(item.t==='mcq'){ it.c=item.c.slice(); it.a=item.a; } else { it.a=item.a; }
+  return it;
+}
+async function setQOverride(cls,key,bi,item){
+  await fetchQOverrides(cls);
+  if(!QOVR[cls].data[key]) QOVR[cls].data[key]={};
+  QOVR[cls].data[key][bi]=qovrItem(item);
+  await saveQOverrides(cls);
+}
+async function clearQOverride(cls,key,bi){
+  await fetchQOverrides(cls);
+  if(QOVR[cls].data[key]){
+    delete QOVR[cls].data[key][bi];
+    if(!Object.keys(QOVR[cls].data[key]).length) delete QOVR[cls].data[key];
+  }
+  await saveQOverrides(cls);
+}
+/* الأسئلة الجاهزة بعد تطبيق تعديلات المعلم */
+function quizBase(cls,key){
+  const base=(QUIZZES[cls]||{})[key]||[];
+  const ovr=(QOVR[cls] && QOVR[cls].data && QOVR[cls].data[key]) || {};
+  return base.map((it,bi)=> ovr[bi] ? ovr[bi] : it);
+}
+/* نافذة إضافة/تعديل سؤال — edit: عنصر سؤال موجود (يحوي _cid لأسئلة المعلم) أو null للإضافة
+   saveFn: دالة حفظ مخصصة (لتعديل الأسئلة الجاهزة عبر overrides) — تُستدعى بدل الإضافة/التحديث في custom_questions */
+function openAddQuestionModal(cls,w,li,onAdded,edit,saveFn){
   const key = lessonKey(w,li);
-  const isEdit = !!(edit && edit._cid!==undefined);
+  const isEdit = !!(edit && (edit._cid!==undefined || saveFn));
   const ov = openModal(`
     <h3>${isEdit?'✏️ تعديل السؤال':'➕ إضافة سؤال'} — اختبر معلوماتك</h3>
     <div class="cqTypes">
@@ -38575,7 +38623,8 @@ function openAddQuestionModal(cls,w,li,onAdded,edit){
     }
     saveBtn.disabled=true; saveBtn.textContent='جارٍ الحفظ…';
     try{
-      if(isEdit) await updateCustomQuestion(cls,key,edit._cid,item);
+      if(saveFn) await saveFn(item);
+      else if(isEdit) await updateCustomQuestion(cls,key,edit._cid,item);
       else await addCustomQuestion(cls,key,item);
       ov.remove();
       if(onAdded) onAdded(item);
@@ -38589,13 +38638,16 @@ function openAddQuestionModal(cls,w,li,onAdded,edit){
 /* عرض اختبار الدرس */
 async function renderQuiz(cls,w,li,box){
   const key=lessonKey(w,li);
-  const base=(QUIZZES[cls]||{})[key]||[];
   const paint=()=>{
+    const baseRaw=(QUIZZES[cls]||{})[key]||[];
+    const ovr=(QOVR[cls] && QOVR[cls].data && QOVR[cls].data[key]) || {};
+    const base=baseRaw.map((it,bi)=> ovr[bi] ? ovr[bi] : it);
     const qs=base.concat(cqList(cls,key));
     const oldSession = box.querySelector('#qSession'); /* الحفاظ على لوحة الجلسة إن كانت مفتوحة */
     box.innerHTML = `<div class="quizBar"><button class="pbtn2" id="qAddBtn">➕ إضافة سؤال</button><span class="syncWrap"><button class="pbtn2 ghost" id="qWsBtn">🖨️ تصدير ورقة عمل</button></span><button class="pbtn2" id="qPlayBtn">🎯 اختبار بالاختيار التلقائي</button></div>` +
       (qs.length ? qs.map((it,qi)=>{
-        const tag = it._cid!==undefined ? ` <span class="qBadge">أضافها المعلم</span><button class="qDel qEdit" data-cid="${it._cid}" title="تعديل السؤال">✏️</button><button class="qDel" data-cid="${it._cid}" title="حذف السؤال">🗑️</button>` : '';
+        const tag = it._cid!==undefined ? ` <span class="qBadge">أضافها المعلم</span><button class="qDel qEdit" data-cid="${it._cid}" title="تعديل السؤال">✏️</button><button class="qDel" data-cid="${it._cid}" title="حذف السؤال">🗑️</button>`
+          : ` <button class="qDel qEditB" data-bi="${qi}" title="تعديل السؤال">✏️</button>${ovr[qi] ? '<span class="qBadge">عدّلها المعلم</span><button class="qDel qRestoreB" data-bi="'+qi+'" title="استعادة السؤال الأصلي">↩️</button>' : ''}`;
         if(it.t==='mcq') return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
           <div class="qChoices">${it.c.map((ch,ci)=>`<button class="qCh" data-qi="${qi}" data-ci="${ci}">${escH(ch)}</button>`).join('')}</div></div>`;
         return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
@@ -38608,6 +38660,18 @@ async function renderQuiz(cls,w,li,box){
     box.querySelectorAll('.qEdit').forEach(b=>b.onclick=()=>{
       const it = cqList(cls,key).find(x=>String(x._cid)===String(b.dataset.cid));
       if(it) openAddQuestionModal(cls,w,li,()=>paint(),it);
+    });
+    /* تعديل سؤال جاهز → يُحفظ كتعديل (override) في قاعدة البيانات */
+    box.querySelectorAll('.qEditB').forEach(b=>b.onclick=()=>{
+      const bi=+b.dataset.bi;
+      openAddQuestionModal(cls,w,li,()=>paint(), base[bi], async (item)=>{
+        await setQOverride(cls,key,bi,item);
+      });
+    });
+    box.querySelectorAll('.qRestoreB').forEach(b=>b.onclick=async ()=>{
+      if(!confirm('استعادة نص السؤال الأصلي وحذف تعديلك؟')) return;
+      try{ await clearQOverride(cls,key,+b.dataset.bi); paint(); }
+      catch(e){ alert('تعذر الاستعادة — تحقق من الاتصال.'); }
     });
     box.querySelectorAll('.qCh').forEach(b=>b.onclick=()=>{
       const it=qs[+b.dataset.qi], ci=+b.dataset.ci;
@@ -38622,7 +38686,7 @@ async function renderQuiz(cls,w,li,box){
       b.style.display='none';
       if(typeof syncActiveFor==='function' && syncActiveFor('lpPaneQuiz', cls,w,li) && !syncState.isRemote) syncSend({k:'ans', qi:+b.dataset.qi});
     });
-    box.querySelectorAll('.qDel').forEach(b=>b.onclick=async ()=>{
+    box.querySelectorAll('.qDel:not(.qEdit):not(.qEditB):not(.qRestoreB)').forEach(b=>b.onclick=async ()=>{
       if(!confirm('حذف هذا السؤال نهائياً؟')) return;
       try{ await deleteCustomQuestion(cls,key,b.dataset.cid); paint(); }
       catch(e){ alert('تعذر الحذف — تحقق من الاتصال.'); }
@@ -38630,6 +38694,10 @@ async function renderQuiz(cls,w,li,box){
     if(oldSession) box.insertBefore(oldSession, box.firstChild); /* إبقاء لوحة الجلسة في الأعلى */
   };
   paint(); /* عرض فوري (الجاهزة + الكاش) */
+  if(!(QOVR[cls] && QOVR[cls].loaded)){
+    await fetchQOverrides(cls);
+    if(box.isConnected) paint(); /* تطبيق تعديلات المعلم بعد التحميل */
+  }
   if(!(CUSTOMQ[cls] && CUSTOMQ[cls][key])){
     await fetchCustomQuestions(cls,key);
     if(box.isConnected) paint(); /* إلحاق أسئلة المعلم بعد التحميل */
@@ -38748,7 +38816,8 @@ function qsOpenSettings(cls,w,li,box,opts){
     let pool = [];
     if(!noQ){
       await fetchCustomQuestions(cls,key);
-      pool = ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
+      await fetchQOverrides(cls);
+      pool = quizBase(cls,key).concat(cqList(cls,key));
     }
     let queue = [];
     if(mode==='groups'){
@@ -39088,7 +39157,8 @@ function wsBuildHtml(cls,w,li,qs,opts){
 async function wsLoadQuestions(cls,w,li){
   const key = lessonKey(w,li);
   await fetchCustomQuestions(cls,key);
-  return ((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key));
+  await fetchQOverrides(cls);
+  return quizBase(cls,key).concat(cqList(cls,key));
 }
 async function wsExportPdf(cls,w,li,btn,opts,qsReady){
   btn.disabled=true;
@@ -39812,7 +39882,8 @@ function initLpClassPanes(cls, w, li, lp){
       /* تمرير أسئلة الدرس (الجاهزة + أسئلة المعلم) للعبة */
       const key=lessonKey(w,li);
       await fetchCustomQuestions(cls,key);
-      const qs=((QUIZZES[cls]||{})[key]||[]).concat(cqList(cls,key)).filter(it=>it.t==='mcq' && it.c && it.c.length>=3);
+      await fetchQOverrides(cls);
+      const qs=quizBase(cls,key).concat(cqList(cls,key)).filter(it=>it.t==='mcq' && it.c && it.c.length>=3);
       const list=qs.map(it=>{
         const correct=it.c[it.a];
         const wrongs=it.c.filter((_,i2)=>i2!==it.a).slice(0,2);
@@ -39836,6 +39907,7 @@ function openLessonPage(cls,w,li){
   const grade = c.grade.replace(/—.*/,'').trim();
   const q = encodeURIComponent('شرح ' + lessonTitle(l) + ' ' + grade + ' عين');
   const lKey = w + ':' + li;
+  const isQuranL = /^قرآن (حفظ|تلاوة)$/.test(subjectOf(cls,l,lKey));
   const ytUrl = (YT_VIDEOS[cls]||{})[lKey] || null;
   const ytM = ytUrl ? (ytUrl.match(/[?&]v=([\w-]{11})/) || ytUrl.match(/youtu\.be\/([\w-]{11})/) || ytUrl.match(/embed\/([\w-]{11})/)) : null;
   const ytId = ytM ? ytM[1] : null;
@@ -39854,6 +39926,7 @@ function openLessonPage(cls,w,li){
       <button class="tab active" data-pane="lpPaneVideo">فيديو الشرح</button>
       <button class="tab" data-pane="lpPaneBook">الكتاب</button>
       <button class="tab" data-pane="lpPaneQuiz">اختبر معلوماتك</button>
+      ${isQuranL ? '<button class="tab" data-pane="lpPaneQE">تقييم الحفظ والتلاوة</button>' : ''}
       <button class="tab" data-pane="lpPaneSheet">كشف الطلاب</button>
       <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
       <button class="tab" data-pane="lpPaneShips">🚢 حرب السفن</button>
@@ -39905,6 +39978,7 @@ function openLessonPage(cls,w,li){
         : '<div class="ddEmpty" style="margin-top:14px">لا توجد صفحات كتاب مرتبطة بهذا الدرس (دروس القرآن الكريم حفظاً وتلاوة ليس لها صفحات في كتاب الدراسات).</div>'}
     </div>
     <div class="lpPane" id="lpPaneQuiz" style="display:none"></div>
+    ${isQuranL ? '<div class="lpPane" id="lpPaneQE" style="display:none"></div>' : ''}
     <div class="lpPane" id="lpPaneSheet" style="display:none">
       <div class="controls">
         <label>الأسبوع:</label>
@@ -39976,6 +40050,11 @@ function openLessonPage(cls,w,li){
     syncSend({k:'scroll', pane:'lpPaneBook', y:lp.scrollTop});
   });
   renderQuiz(cls,w,li,lp.querySelector('#lpPaneQuiz'));
+  if(isQuranL){
+    const qePane = lp.querySelector('#lpPaneQE');
+    const rerQE = ()=>renderQuranEval(cls, qePane, rerQE);
+    rerQE();
+  }
   initBookTab(cls,w,li,lp.querySelector('#lpPaneBook'));
   initLpClassPanes(cls, w, li, lp);
   /* الاختيار التلقائي من صفحة الدرس */
