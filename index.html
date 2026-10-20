@@ -3458,7 +3458,9 @@ async function fillRow(cls,w,target,mode){
   });
 }
 
+let sheetSeq=0;
 async function renderSheet(){
+  const mySeq=++sheetSeq;
   const cls = curSheet;
   const __sv = sheetSel.value;
   const wrapEl = document.getElementById('sheetWrap');
@@ -3522,6 +3524,7 @@ async function renderSheet(){
     html += `<td class="total">${tot}</td></tr>`;
   });
   html += `</table>`;
+  if(mySeq!==sheetSeq) return; // تجاهل رسمة قديمة سبقها طلب أحدث
   document.getElementById('sheetWrap').innerHTML = html;
 
   // أحداث الفرز
@@ -3673,6 +3676,7 @@ function termMainVal(cls,term,mi,si){
   return v===undefined?'':v;
 }
 async function renderTermSheet(cls,term){
+  const mySeq=++sheetSeq;
   const wrapEl=document.getElementById('sheetWrap');
   document.getElementById('sheetWeekDates').textContent = (term==='t1'?'درجات الفترة الأولى':'درجات الفترة الثانية');
   if(!(marksCache[cls] && marksCache[cls].loaded)){
@@ -3710,6 +3714,7 @@ async function renderTermSheet(cls,term){
     html+=`<td class="total" style="${markColor(tot,100)}">${tot}</td></tr>`;
   });
   html+='</table>';
+  if(mySeq!==sheetSeq) return; // تجاهل رسمة قديمة سبقها طلب أحدث
   wrapEl.innerHTML=html;
   wrapEl.querySelectorAll('[data-tgl]').forEach(b=>b.onclick=async ()=>{
     cfg.mains[+b.dataset.tgl].open=!cfg.mains[+b.dataset.tgl].open;
@@ -3736,6 +3741,24 @@ async function renderTermSheet(cls,term){
     }
     saveTermVals(cls,term);
     renderSheet();
+  }));
+  // التنقل بالأسهم بين خانات الإدخال اليدوي (الأعمدة اليدوية والرئيسية)
+  const tinps=[...wrapEl.querySelectorAll('.termInp')];
+  tinps.forEach(inp=>inp.addEventListener('keydown',e=>{
+    if(!['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const si=+inp.dataset.si;
+    const rowInps=tinps.filter(x=>+x.dataset.si===si);
+    const ci=rowInps.indexOf(inp);
+    let t=null;
+    if(e.key==='ArrowLeft') t=rowInps[ci+1];            // في اتجاه RTL: الأيسر يتقدم للخانة التالية
+    else if(e.key==='ArrowRight') t=rowInps[ci-1];
+    else{
+      const ns=si+(e.key==='ArrowDown'?1:-1);
+      const nInps=tinps.filter(x=>+x.dataset.si===ns);
+      t=nInps.length?nInps[Math.min(ci,nInps.length-1)]:null;
+    }
+    if(t){ t.focus(); t.select(); }
   }));
 }
 function openTermMainEditor(cls,term,mi){
