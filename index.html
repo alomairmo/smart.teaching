@@ -227,6 +227,20 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .termTbl .termMainH{background:var(--teal-soft,#e0f2f1); font-weight:800}
 .termTbl .termSubH{background:#f6f3ea; font-size:.85em; font-weight:600; color:var(--muted,#666)}
 .termTbl input.termInp{width:52px; text-align:center; font-weight:700}
+
+table.sheet{overflow:visible}
+/* تثبيت عمود الاسم ورقم التسلسل (ورقم الهوية في كشف الفترة) أثناء التمرير الأفقي + تثبيت صف العناوين عمودياً — يعمّ كل الكشوف */
+table.sheet th:nth-child(1), table.sheet td:nth-child(1){position:sticky; right:0; z-index:2; width:46px; min-width:46px}
+table.sheet th:nth-child(2), table.sheet td:nth-child(2){position:sticky; right:46px; z-index:2}
+table.termTbl th:nth-child(2), table.termTbl td:nth-child(2){width:100px; min-width:100px}
+table.termTbl th:nth-child(3), table.termTbl td:nth-child(3){position:sticky; right:146px; z-index:2}
+table.sheet td:nth-child(1), table.sheet td:nth-child(2){background:#fffdf7; box-shadow:-2px 0 4px rgba(0,0,0,.05)}
+table.termTbl td:nth-child(3){background:#fffdf7; box-shadow:-2px 0 4px rgba(0,0,0,.05)}
+table.sheet tr:nth-child(even) td:nth-child(1), table.sheet tr:nth-child(even) td:nth-child(2){background:#fbf8f0}
+table.termTbl tr:nth-child(even) td:nth-child(3){background:#fbf8f0}
+table.sheet th:nth-child(1), table.sheet th:nth-child(2), table.termTbl th:nth-child(3){background:linear-gradient(135deg,var(--teal),var(--teal-deep)); z-index:4}
+table.sheet tr:first-child th{position:sticky; top:0; z-index:5}
+table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-child(2), table.termTbl tr:first-child th:nth-child(3){z-index:7}
 .qeBar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px}
 .qeGroup{display:flex; gap:6px; background:var(--accent-soft); padding:5px; border-radius:999px; border:1px solid var(--line)}
 .qeGroup .tab{border-radius:999px}
