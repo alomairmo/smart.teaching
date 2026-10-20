@@ -3639,7 +3639,8 @@ function termImportVal(cls,sub,si){
   });
   if(!cnt) return '';
   const mx=colMax(cls,sub.col)||5;
-  return Math.round(sum/cnt/mx*sub.max*10)/10;
+  // الحد الأعلى هو القيمة العظمى للعمود الثانوي (الدرجات الإضافية فوق سلّم العمود لا تتجاوزها)
+  return Math.min(sub.max, Math.round(sum/cnt/mx*sub.max*10)/10);
 }
 function termSubVal(cls,term,mi,sj,si){
   const sub=TERM_CFG[termKey(cls,term)].mains[mi].subs[sj];
@@ -3652,7 +3653,7 @@ function termMainVal(cls,term,mi,si){
   if(mn.subs.length){
     let s=0,any=false;
     mn.subs.forEach((sub,sj)=>{ const v=termSubVal(cls,term,mi,sj,si); if(v!==''){ s+=+v; any=true; } });
-    return any?Math.round(s*10)/10:'';
+    return any?Math.min(mn.max, Math.round(s*10)/10):'';
   }
   const v=(TERM_VALS[termKey(cls,term)]['m'+mi]||{})[si];
   return v===undefined?'':v;
