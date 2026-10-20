@@ -245,8 +245,9 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
 .qeGroup{display:flex; gap:6px; background:var(--accent-soft); padding:5px; border-radius:999px; border:1px solid var(--line)}
 .qeGroup .tab{border-radius:999px}
 .qeMsg{font-size:.75rem; color:var(--teal); font-weight:700}
-.qeScroll{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:var(--shadow)}
+.qeScroll{overflow-x:auto; max-height:78vh; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:var(--shadow)}
 .qeTbl{border-collapse:collapse; width:100%; font-size:.8rem}
+.qeTbl tr:first-child th{position:sticky; top:0; z-index:3}
 .qeTbl th{background:var(--accent-soft); color:var(--ink); font-size:.72rem; padding:8px 6px; border:1px solid var(--line); white-space:nowrap; cursor:help}
 .qeTbl td{border:1px solid var(--line); padding:3px 4px; text-align:center}
 .qeTbl .qeName{position:sticky; right:0; background:var(--card); text-align:right; font-weight:600; font-size:.78rem; padding:6px 10px; min-width:130px; z-index:2; box-shadow:-2px 0 4px rgba(0,0,0,.05)}
@@ -530,7 +531,7 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
       <button class="pbtn2 ghost" id="sheetColsBtn">⚙️ تعديل الأعمدة</button>
       <span class="saved" id="savedMsg"></span>
     </div>
-    <div style="overflow-x:auto" id="sheetWrap"></div>
+    <div style="overflow:auto; max-height:78vh" id="sheetWrap"></div>
     <div class="note">كل معيار من 5 درجات (تُعبّأ كاملة تلقائياً ويمكن تغييرها). تتلوّن الخانة حسب الدرجة: من الأحمر (الأدنى) إلى الأخضر (5)، والدرجة 6 ذهبية مكافأة، و7 ماسية. اكتب «غ» في أي خانة لتسجيل الغياب فتصبح رمادية ولا تدخل في المتوسط. التعديلات تُحفظ فوراً في قاعدة البيانات السحابية وتظهر من أي جهاز. اضغط على عنوان أي عمود لترتيب الطلاب تصاعدياً، واضغط مرة أخرى للترتيب التنازلي. اختر «متوسط كل الأسابيع» لعرض متوسط الطالب من 100.</div>
   </section>
 
