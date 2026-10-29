@@ -40214,6 +40214,71 @@ function initLpClassPanes(cls, w, li, lp){
       try{ ifr.contentWindow.postMessage({type:'questions', list}, '*'); }catch(e){}
     });
   };
+
+  /* 🐍 السلم والثعبان — تعمل داخل التبويب وتبقى شغالة عند التنقل */
+  const snakesSel = lp.querySelector('.lpSnakesWeek');
+  lpFillWeeks(snakesSel, false);
+  snakesSel.value = CUR_WEEK;
+  const snakesStage = lp.querySelector('.lpSnakesStage');
+  const snakesCard  = lp.querySelector('.lpSnakesCard');
+  lp.querySelector('.lpSnakesBack').onclick=()=>{
+    snakesStage.style.display='none';
+    snakesCard.style.display='';
+  };
+  async function gatherAllQuestions(cls){
+    await fetchQOverrides(cls);
+    let customs=[];
+    try{
+      const r=await sb.from('custom_questions').select('lesson_key,qtype,q,choices,answer').eq('class_key',cls).order('id');
+      customs=r.data||[];
+    }catch(e){}
+    const lessons=[], list=[];
+    WEEKS.forEach(ww=>{
+      const wd2=weekData(cls,ww);
+      if(!wd2||!wd2.lessons) return;
+      wd2.lessons.forEach((l2,li2)=>{
+        const key2=ww+':'+li2;
+        const items=quizBase(cls,key2).concat(customs.filter(c=>c.lesson_key===key2).map(cqRowToItem));
+        if(!items.length) return;
+        const lbl=weekLabel(ww)+' — '+lessonTitle(l2);
+        lessons.push({key:key2,title:lbl});
+        items.forEach(it=>list.push({lesson:key2,t:it.t,q:it.q,c:it.c,a:it.a}));
+      });
+    });
+    return {lessons,list};
+  }
+  lp.querySelector('.lpSnakesPlay').onclick=()=>{
+    const gw = +snakesSel.value;
+    let ifr = snakesStage.querySelector('iframe');
+    if(ifr && +ifr.dataset.w === gw){
+      snakesCard.style.display='none';
+      snakesStage.style.display='';
+      return;
+    }
+    if(ifr) ifr.remove();
+    ifr=document.createElement('iframe');
+    ifr.dataset.w=gw;
+    ifr.src=`snakes_ladders.html?cls=${cls}&w=${gw}`;
+    ifr.style.cssText='width:100%;height:78vh;min-height:520px;border:0;border-radius:12px;background:#1a2f1d';
+    snakesStage.appendChild(ifr);
+    snakesCard.style.display='none';
+    snakesStage.style.display='';
+    const sendQs=async ()=>{
+      const payload=await gatherAllQuestions(cls);
+      try{ ifr.contentWindow.postMessage({type:'sl_questions', lessons:payload.lessons, list:payload.list}, '*'); }catch(e){}
+    };
+    ifr.addEventListener('load', sendQs);
+    /* إعادة الإرسال إذا طلبت اللعبة الأسئلة */
+    if(!window._slMsgBound){
+      window._slMsgBound=true;
+      window.addEventListener('message',e=>{
+        if((e.data||{}).type==='sl_need_questions'){
+          const f=snakesStage.querySelector('iframe');
+          if(f) (async()=>{ const payload=await gatherAllQuestions(cls); try{ f.contentWindow.postMessage({type:'sl_questions', lessons:payload.lessons, list:payload.list}, '*'); }catch(e2){} })();
+        }
+      });
+    }
+  };
   /* عرض مبدئي على الأسبوع الحالي */
   renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
   renderLpGroups(cls, +gSel.value, gPane);
@@ -40252,6 +40317,7 @@ function openLessonPage(cls,w,li){
       <button class="tab" data-pane="lpPaneSheet">كشف الطلاب</button>
       <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
       <button class="tab" data-pane="lpPaneShips">🚢 حرب السفن</button>
+      <button class="tab" data-pane="lpPaneSnakes">🐍 السلم والثعبان</button>
     </div>
     <div class="lpPane" id="lpPaneVideo">
       ${ytId
@@ -40337,6 +40403,23 @@ function openLessonPage(cls,w,li){
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لتبويب الكتاب أو أي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
           <button class="pbtn2 ghost lpShipsBack">⚙️ إعدادات اللعبة</button>
+        </div>
+      </div>
+    </div>
+    <div class="lpPane" id="lpPaneSnakes" style="display:none">
+      <div class="weekcard lpSnakesCard" style="margin-top:14px;text-align:center">
+        <h3>🐍 السلم والثعبان — الحديقة ثلاثية الأبعاد</h3>
+        <div class="note" style="text-align:right">لعبة جماعية: ملعب حديقة مقسّم إلى مربعات (افتراضياً 10×10 ويمكن تغييره من إعدادات اللعبة). كل مجموعة تتقدم بالإجابة الصحيحة، وسرعة الإجابة تحدد عدد الخطوات (مدة السؤال مقسّمة على 6: الإجابة في السدس الأول = 6 خطوات). الحفر تشفط للخلف والهليكوبترات تحمل للأمام، وأماكنها عشوائية كل لعبة. النقاط المكتسبة تُضاف لنقاط المجموعة في الأسبوع المحدد، ومن تصل نهاية الحديقة تأخذ أعلى درجة.</div>
+        <div class="controls" style="justify-content:center;margin-top:10px">
+          <label>أسبوع احتساب النقاط:</label>
+          <select class="lpSnakesWeek"></select>
+          <button class="pbtn2 lpSnakesPlay">🐍 تشغيل اللعبة</button>
+        </div>
+      </div>
+      <div class="lpSnakesStage" style="display:none;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لأي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpSnakesBack">⚙️ شاشة البداية</button>
         </div>
       </div>
     </div>

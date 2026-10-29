@@ -1,1 +1,847 @@
-<PLACEHOLDER>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>السلم والثعبان — لعبة جماعية</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; overflow:hidden; background:#1a2f1d; font-family:'Segoe UI',Tahoma,sans-serif}
+  #scene{position:fixed; inset:0}
+  /* ===== شاشة الإعدادات ===== */
+  #setup{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse at center,#2c4a31 0%,#152417 100%); overflow-y:auto; padding:20px}
+  .setupCard{background:#fffdf5; border-radius:18px; padding:22px 26px; max-width:640px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.5); max-height:92vh; overflow-y:auto}
+  .setupCard h1{color:#1d5c43; font-size:1.5rem; text-align:center; margin-bottom:4px}
+  .setupCard .sub{color:#7a7263; text-align:center; font-size:.85rem; margin-bottom:14px}
+  .sRow{display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap}
+  .sRow label{font-weight:700; color:#3d372c; font-size:.92rem; min-width:150px}
+  .sRow input[type=number]{width:70px; text-align:center; padding:6px; border:1px solid #d8cfb8; border-radius:8px; font:inherit; font-weight:700}
+  .sRow select{padding:6px 10px; border:1px solid #d8cfb8; border-radius:8px; font:inherit}
+  .hint{font-size:.75rem; color:#8b8371}
+  .lessonsBox{border:1px solid #e0d7c0; border-radius:10px; padding:8px 10px; max-height:170px; overflow-y:auto; background:#fbf8ee; width:100%}
+  .lessonsBox label{display:flex; gap:6px; align-items:center; font-size:.85rem; font-weight:400; padding:3px 0; cursor:pointer}
+  .typeRow{display:flex; gap:14px}
+  .typeRow label{display:flex; gap:5px; align-items:center; font-size:.88rem; font-weight:600; color:#3d372c; cursor:pointer}
+  #startBtn{width:100%; margin-top:14px; padding:12px; font:inherit; font-size:1.1rem; font-weight:800; color:#fff; background:linear-gradient(135deg,#2e7d4f,#1d5c43); border:0; border-radius:12px; cursor:pointer; box-shadow:0 4px 14px rgba(29,92,67,.4)}
+  #startBtn:hover{filter:brightness(1.08)}
+  #startBtn:disabled{opacity:.5; cursor:not-allowed}
+  .secT{font-weight:800; color:#1d5c43; margin:12px 0 6px; font-size:.95rem; border-top:1px dashed #d8cfb8; padding-top:10px}
+  /* ===== واجهة اللعب ===== */
+  #hud{position:fixed; top:10px; right:10px; left:10px; z-index:20; display:none; justify-content:space-between; align-items:flex-start; pointer-events:none}
+  #hud>*{pointer-events:auto}
+  .panel{background:rgba(255,253,245,.95); border-radius:14px; padding:10px 16px; box-shadow:0 4px 16px rgba(0,0,0,.35)}
+  #turnPanel{min-width:230px; text-align:center}
+  #turnName{font-weight:800; font-size:1.15rem}
+  #turnPos{font-size:.8rem; color:#6b6353; margin-top:2px}
+  #hudBtns{display:flex; gap:8px}
+  .gbtn{font:inherit; font-weight:700; font-size:.9rem; padding:8px 16px; border:0; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,.3)}
+  .gbtn.primary{background:#1d5c43; color:#fff}
+  .gbtn.warn{background:#b45309; color:#fff}
+  .gbtn.ghost{background:rgba(255,253,245,.95); color:#3d372c}
+  .gbtn:disabled{opacity:.45; cursor:not-allowed}
+  /* ===== لوحة السؤال ===== */
+  #qPanel{position:fixed; bottom:14px; right:50%; transform:translateX(50%); z-index:30; width:min(720px,94vw); display:none}
+  #qCard{background:rgba(255,253,245,.98); border-radius:16px; padding:14px 18px; box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  #qLesson{font-size:.72rem; color:#8b8371; margin-bottom:4px}
+  #qText{font-weight:800; font-size:1.05rem; color:#2c2618; margin-bottom:10px; line-height:1.6}
+  #qOpts{display:flex; flex-direction:column; gap:7px}
+  .qOpt{font:inherit; text-align:right; padding:9px 14px; border:2px solid #d8cfb8; border-radius:10px; background:#fff; cursor:pointer; font-size:.95rem; font-weight:600; color:#3d372c}
+  .qOpt:hover{border-color:#2e7d4f; background:#f0f7f0}
+  .qOpt.correct{border-color:#15803d; background:#dcfce7}
+  .qOpt.wrong{border-color:#b91c1c; background:#fee2e2}
+  #qJudge{display:flex; gap:10px; justify-content:center}
+  #qJudge .gbtn{font-size:1rem; padding:10px 26px}
+  /* المؤقت بستة أقسام */
+  #timerWrap{margin-bottom:10px}
+  #timerBar{display:flex; gap:3px; height:16px; direction:ltr}
+  #timerBar .seg{flex:1; border-radius:5px; background:#e5e0d0; transition:background .3s}
+  #timerTxt{text-align:center; font-weight:800; font-size:.85rem; margin-top:3px; color:#4a4436}
+  #qResult{text-align:center; font-weight:800; font-size:1rem; min-height:24px; margin-top:8px}
+  /* لوحة النقاط */
+  #scoresPanel{max-width:250px}
+  #scoresPanel h4{font-size:.85rem; color:#1d5c43; margin-bottom:5px}
+  .scoreRow{display:flex; justify-content:space-between; gap:10px; font-size:.8rem; padding:2px 0; font-weight:700}
+  .dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:5px}
+  #toast{position:fixed; top:70px; right:50%; transform:translateX(50%); z-index:40; background:rgba(20,30,20,.92); color:#fff; padding:10px 22px; border-radius:12px; font-weight:700; display:none; box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  #winOverlay{position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(10,20,12,.7)}
+  #winCard{background:#fffdf5; border-radius:20px; padding:30px 44px; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.6)}
+  #winCard h2{color:#b45309; font-size:1.6rem; margin-bottom:8px}
+  #winCard p{color:#3d372c; font-weight:700}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<!-- شاشة الإعدادات -->
+<div id="setup">
+  <div class="setupCard">
+    <h1>🐍 السلم والثعبان — الحديقة</h1>
+    <div class="sub">لعبة جماعية ثلاثية الأبعاد: كل مجموعة تتقدم بإجابتها الصحيحة، وسرعة الإجابة تحدد عدد الخطوات</div>
+
+    <div class="secT">⚙️ إعدادات الملعب</div>
+    <div class="sRow">
+      <label>حجم الملعب (مربعات):</label>
+      <input type="number" id="setN" min="5" max="12" value="10">
+      <span class="hint" id="nHint">10 × 10 = 100 مربع</span>
+    </div>
+    <div class="sRow">
+      <label>عدد الحفر (الثعابين):</label>
+      <input type="number" id="setHoles" min="1" max="30" value="8">
+      <span class="hint">حفرة تشفط من يقف عليها إلى مربع خلفه</span>
+    </div>
+    <div class="sRow">
+      <label>عدد الهليكوبترات (السلالم):</label>
+      <input type="number" id="setHelis" min="1" max="30" value="8">
+      <span class="hint">تحمل من يصلها إلى مربع متقدم</span>
+    </div>
+
+    <div class="secT">⏱️ إعدادات الأسئلة</div>
+    <div class="sRow">
+      <label>مدة السؤال (ثواني):</label>
+      <input type="number" id="setDur" min="6" max="120" value="12">
+      <span class="hint">تُقسم على 6: الإجابة في السدس الأول = 6 خطوات، الثاني = 5 … الأخير = 1</span>
+    </div>
+    <div class="sRow">
+      <label>نوع الأسئلة:</label>
+      <div class="typeRow">
+        <label><input type="radio" name="qtype" value="both" checked> خيارات ومقالية</label>
+        <label><input type="radio" name="qtype" value="mcq"> خيارات فقط</label>
+        <label><input type="radio" name="qtype" value="open"> مقالية فقط</label>
+      </div>
+    </div>
+    <div class="sRow" style="align-items:flex-start">
+      <label>الدروس المشمولة:</label>
+      <div style="flex:1">
+        <div style="margin-bottom:4px">
+          <button class="gbtn ghost" id="allL" style="padding:2px 10px;font-size:.75rem">تحديد الكل</button>
+          <button class="gbtn ghost" id="noL" style="padding:2px 10px;font-size:.75rem">إلغاء الكل</button>
+        </div>
+        <div class="lessonsBox" id="lessonsBox"></div>
+      </div>
+    </div>
+    <button id="startBtn">🚀 بدء اللعبة</button>
+  </div>
+</div>
+
+<!-- واجهة اللعب -->
+<div id="hud">
+  <div class="panel" id="turnPanel">
+    <div id="turnName">—</div>
+    <div id="turnPos"></div>
+  </div>
+  <div id="hudBtns">
+    <button class="gbtn primary" id="askBtn">❓ بدء السؤال</button>
+    <button class="gbtn warn" id="nextBtn" disabled>⏭️ الجولة التالية</button>
+    <button class="gbtn ghost" id="newGameBtn">🔄 لعبة جديدة</button>
+  </div>
+  <div class="panel" id="scoresPanel"><h4>🏆 النقاط المكتسبة</h4><div id="scoresList"></div></div>
+</div>
+
+<!-- لوحة السؤال -->
+<div id="qPanel">
+  <div id="qCard">
+    <div id="timerWrap">
+      <div id="timerBar"></div>
+      <div id="timerTxt"></div>
+    </div>
+    <div id="qLesson"></div>
+    <div id="qText"></div>
+    <div id="qOpts"></div>
+    <div id="qJudge" style="display:none">
+      <button class="gbtn primary" id="jYes">✅ إجابة صحيحة</button>
+      <button class="gbtn warn" id="jNo">❌ إجابة خاطئة</button>
+    </div>
+    <div id="qResult"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="winOverlay"><div id="winCard"><h2>🏆 فوز!</h2><p id="winTxt"></p><br><button class="gbtn primary" onclick="document.getElementById('winOverlay').style.display='none'">متابعة</button></div></div>
+
+<script>
+/* ================= السلم والثعبان — الحديقة ================= */
+const P=new URLSearchParams(location.search);
+const G_CLS=P.get('cls')||'g4', G_W=+(P.get('w')||1);
+const SB_URL="https://lazyikoawttfcflpdixs.supabase.co", SB_KEY="sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
+const sbc=supabase.createClient(SB_URL,SB_KEY);
+
+/* ---------- الحالة العامة ---------- */
+let GROUPS=[];            // [{id,name,color,pos,maxSq,earned,mesh,heliCarry}]
+let QUESTIONS=[], LESSONS=[];
+let cfg={N:10, holes:8, helis:8, dur:12, qtype:'both', lessons:null};
+let holesMap={}, helisMap={};   // square -> target square
+let curTurn=0, animating=false, gameStarted=false, finishedGroups=new Set();
+const TILE=2.2;
+
+const GROUP_COLORS=[0xd32f2f,0x1976d2,0x388e3c,0xf9a825,0x7b1fa2,0x00838f,0xe64a19,0x5d4037];
+const $=id=>document.getElementById(id);
+function toast(t,ms){ const el=$('toast'); el.textContent=t; el.style.display='block'; clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',ms||2200); }
+
+/* ---------- استقبال الأسئلة من الصفحة الأم ---------- */
+window.addEventListener('message',e=>{
+  const d=e.data||{};
+  if(d.type==='sl_questions'){
+    LESSONS=d.lessons||[];
+    QUESTIONS=d.list||[];
+    buildLessonsBox();
+  }
+});
+function buildLessonsBox(){
+  const box=$('lessonsBox'); box.innerHTML='';
+  const counts={};
+  QUESTIONS.forEach(q=>counts[q.lesson]=(counts[q.lesson]||0)+1);
+  LESSONS.forEach(L=>{
+    const c=counts[L.key]||0;
+    const lb=document.createElement('label');
+    lb.innerHTML=`<input type="checkbox" value="${L.key}" ${c?'checked':''} ${c?'':'disabled'}> ${L.title} <span class="hint">(${c} سؤال)</span>`;
+    box.appendChild(lb);
+  });
+  if(!LESSONS.length) box.innerHTML='<div class="hint">لم تصل أسئلة بعد… تأكد من فتح اللعبة من صفحة درس</div>';
+}
+$('allL').onclick=e=>{e.preventDefault(); document.querySelectorAll('#lessonsBox input:not(:disabled)').forEach(c=>c.checked=true);};
+$('noL').onclick=e=>{e.preventDefault(); document.querySelectorAll('#lessonsBox input').forEach(c=>c.checked=false);};
+$('setN').oninput=()=>{ const n=+$('setN').value||10; $('nHint').textContent=`${n} × ${n} = ${n*n} مربع`; };
+
+/* ---------- تحميل المجموعات ونقاطها ---------- */
+async function loadGroups(){
+  try{
+    const r=await sbc.from('marks').select('value').eq('class_key','grpdef:'+G_CLS).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    const defs=(r.data&&r.data[0])?JSON.parse(r.data[0].value):[];
+    GROUPS=defs.map((d,i)=>({id:d.id, name:'المجموعة '+d.name, color:GROUP_COLORS[i%GROUP_COLORS.length], pos:1, maxSq:0, earned:0, mesh:null}));
+  }catch(e){}
+  if(!GROUPS.length) GROUPS=[1,2,3,4].map(i=>({id:i,name:'المجموعة '+i,color:GROUP_COLORS[(i-1)%8],pos:1,maxSq:0,earned:0,mesh:null}));
+  try{
+    const r2=await sbc.from('marks').select('class_key,value').like('class_key','grp:'+G_CLS+':%').eq('week',G_W).eq('criterion_idx',0);
+    (r2.data||[]).forEach(row=>{
+      const gid=+row.class_key.split(':')[2];
+      const g=GROUPS.find(x=>x.id===gid);
+      if(g) g.weekPts=+row.value||0;
+    });
+  }catch(e){}
+  GROUPS.forEach(g=>{ if(g.weekPts===undefined) g.weekPts=20; });
+}
+async function pushGroupPoints(g){
+  try{
+    await sbc.from('marks').upsert({class_key:'grp:'+G_CLS+':'+g.id, week:G_W, student_idx:0, criterion_idx:0,
+      value:String(g.weekPts), updated_at:new Date().toISOString()});
+  }catch(e){}
+}
+function awardPoints(g){
+  if(g.pos>g.maxSq){
+    const delta=g.pos-g.maxSq;
+    g.maxSq=g.pos; g.earned+=delta; g.weekPts+=delta;
+    pushGroupPoints(g);
+    renderScores();
+  }
+}
+function renderScores(){
+  $('scoresList').innerHTML=GROUPS.map(g=>
+    `<div class="scoreRow"><span><span class="dot" style="background:#${g.color.toString(16).padStart(6,'0')}"></span>${g.name}</span><span>${g.earned} نقطة</span></div>`).join('');
+}
+
+
+/* ================= مشهد ثلاثي الأبعاد ================= */
+let scene,camera,renderer,clock;
+let boardGroup, charsGroup, holesGroup, helisGroup;
+let camMode='top', camTarget=null, camPos=null;
+const tweens=[];
+function tween(dur,fn,onDone){ tweens.push({t:0,dur,fn,onDone}); }
+function easeIO(t){ return t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+
+function initScene(){
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x9fd3e8);
+  scene.fog=new THREE.Fog(0x9fd3e8, 60, 160);
+  camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .1, 500);
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  $('scene').appendChild(renderer.domElement);
+  clock=new THREE.Clock();
+
+  const sun=new THREE.DirectionalLight(0xfff5e0,1.15);
+  sun.position.set(30,50,20); sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.camera.left=-60; sun.shadow.camera.right=60;
+  sun.shadow.camera.top=60; sun.shadow.camera.bottom=-60;
+  scene.add(sun);
+  scene.add(new THREE.AmbientLight(0xffffff,.55));
+  const hemi=new THREE.HemisphereLight(0xbfe3ff,0x4a7c3a,.4); scene.add(hemi);
+
+  addEventListener('resize',()=>{
+    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+}
+
+/* موضع مربع: 1 في أسفل اليسار، المسار يتعرّج */
+function sqPos(i){
+  const N=cfg.N;
+  const r=Math.floor((i-1)/N);        // الصف من الأسفل
+  let c=(i-1)%N;
+  if(r%2===1) c=N-1-c;                // الصفوف الفردية معكوسة
+  const half=N*TILE/2;
+  return new THREE.Vector3(-half+TILE/2 + c*TILE, 0, half-TILE/2 - r*TILE);
+}
+
+/* ---------- بناء الحديقة ---------- */
+function buildGarden(){
+  const N=cfg.N, size=N*TILE;
+  // العشب
+  const grass=new THREE.Mesh(new THREE.PlaneGeometry(size*3.2,size*3.2),
+    new THREE.MeshLambertMaterial({color:0x5d9c4a}));
+  grass.rotation.x=-Math.PI/2; grass.position.y=-.05; grass.receiveShadow=true;
+  scene.add(grass);
+  // إطار حجري حول اللوح
+  const border=new THREE.Mesh(new THREE.BoxGeometry(size+2.4,.5,size+2.4),
+    new THREE.MeshLambertMaterial({color:0x9c8e7a}));
+  border.position.y=.02; border.receiveShadow=true; scene.add(border);
+  const inner=new THREE.Mesh(new THREE.BoxGeometry(size+1.2,.62,size+1.2),
+    new THREE.MeshLambertMaterial({color:0xcfc3a8}));
+  inner.position.y=.05; inner.receiveShadow=true; scene.add(inner);
+
+  // أشجار حول الحديقة
+  const treePos=[];
+  const R=size*1.05;
+  for(let k=0;k<14;k++){
+    const a=k/14*Math.PI*2 + (k%2)*.2;
+    treePos.push([Math.cos(a)*R*(1+.15*((k*7)%3)/3), Math.sin(a)*R*(1+.15*((k*5)%3)/3)]);
+  }
+  treePos.forEach(([x,z],k)=>{
+    const g=new THREE.Group();
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,1.6,8), new THREE.MeshLambertMaterial({color:0x6d4c2f}));
+    trunk.position.y=.8; trunk.castShadow=true; g.add(trunk);
+    const leafC=[0x2e7d32,0x388e3c,0x43a047][k%3];
+    const l1=new THREE.Mesh(new THREE.ConeGeometry(1.5,2.6,8), new THREE.MeshLambertMaterial({color:leafC}));
+    l1.position.y=2.6; l1.castShadow=true; g.add(l1);
+    const l2=new THREE.Mesh(new THREE.ConeGeometry(1.05,1.8,8), new THREE.MeshLambertMaterial({color:leafC}));
+    l2.position.y=3.8; l2.castShadow=true; g.add(l2);
+    g.position.set(x,0,z);
+    const s=.8+((k*13)%5)*.15; g.scale.setScalar(s);
+    scene.add(g);
+  });
+  // أزهار متناثرة
+  for(let k=0;k<26;k++){
+    const a=Math.random()*Math.PI*2, rr=size*.62+Math.random()*size*.35;
+    const f=new THREE.Mesh(new THREE.SphereGeometry(.14,6,6),
+      new THREE.MeshLambertMaterial({color:[0xe53935,0xfdd835,0xec407a,0xffffff][k%4]}));
+    f.position.set(Math.cos(a)*rr,.12,Math.sin(a)*rr); scene.add(f);
+  }
+  // غيوم
+  for(let k=0;k<6;k++){
+    const c=new THREE.Group();
+    for(let j=0;j<3;j++){
+      const s=new THREE.Mesh(new THREE.SphereGeometry(1.4-j*.3,8,8), new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:.85}));
+      s.position.x=j*1.4-1.4; c.add(s);
+    }
+    c.position.set((Math.random()-.5)*90, 20+Math.random()*8, (Math.random()-.5)*90);
+    c.scale.y=.5; scene.add(c);
+  }
+}
+
+/* ---------- بناء اللوح ---------- */
+function makeTextSprite(txt,size,color,bg){
+  const cv=document.createElement('canvas'); cv.width=cv.height=128;
+  const ctx=cv.getContext('2d');
+  if(bg){ ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(64,64,52,0,7); ctx.fill(); }
+  ctx.fillStyle=color||'#3d372c'; ctx.font='bold 56px Tahoma'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(txt,64,68);
+  const tex=new THREE.CanvasTexture(cv);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(size,size),
+    new THREE.MeshBasicMaterial({map:tex,transparent:true}));
+  m.rotation.x=-Math.PI/2;
+  return m;
+}
+function buildBoard(){
+  if(boardGroup) scene.remove(boardGroup);
+  boardGroup=new THREE.Group(); scene.add(boardGroup);
+  const N=cfg.N, total=N*N;
+  const cA=new THREE.MeshLambertMaterial({color:0xe8dfc3});
+  const cB=new THREE.MeshLambertMaterial({color:0xd8cba5});
+  const cStart=new THREE.MeshLambertMaterial({color:0x81c784});
+  const cEnd=new THREE.MeshLambertMaterial({color:0xffd54f});
+  for(let i=1;i<=total;i++){
+    const p=sqPos(i);
+    const tile=new THREE.Mesh(new THREE.BoxGeometry(TILE-.12,.34,TILE-.12),
+      i===1?cStart:(i===total?cEnd:(((Math.floor((i-1)/N)+(i-1)%N)%2===0)?cA:cB)));
+    tile.position.set(p.x,.34,p.z);
+    tile.receiveShadow=true; tile.castShadow=true;
+    boardGroup.add(tile);
+    const num=makeTextSprite(String(i),.9, i===total?'#7a4d00':'#5a5240');
+    num.position.set(p.x,.52,p.z);
+    boardGroup.add(num);
+  }
+}
+
+/* ---------- الحفر (الثعابين) والهليكوبترات (السلالم) ---------- */
+function randPlace(){
+  const N=cfg.N, total=N*N;
+  holesMap={}; helisMap={};
+  const used=new Set([1,total]);
+  const pick=(min,max)=>{ let s; let guard=0;
+    do{ s=min+Math.floor(Math.random()*(max-min+1)); guard++; }while(used.has(s)&&guard<400);
+    used.add(s); return s; };
+  for(let k=0;k<cfg.holes;k++){
+    const s=pick(Math.max(3,Math.floor(total*.08)), total-1);
+    const span=Math.min(s-2, Math.max(1,Math.floor(total*.25)));
+    const t=Math.max(1, s-1-Math.floor(Math.random()*span));
+    holesMap[s]=t;
+  }
+  for(let k=0;k<cfg.helis;k++){
+    const s=pick(2, total-Math.max(3,Math.floor(total*.08)));
+    let guard=0,t;
+    do{ t=s+1+Math.floor(Math.random()*Math.min(total-s-1,Math.max(1,Math.floor(total*.25)))); guard++; }while(holesMap[t]&&guard<60);
+    helisMap[s]=Math.min(total-1,t);
+  }
+}
+function buildHoles(){
+  if(holesGroup) scene.remove(holesGroup);
+  holesGroup=new THREE.Group(); scene.add(holesGroup);
+  Object.keys(holesMap).forEach(s=>{
+    const p=sqPos(+s);
+    const g=new THREE.Group();
+    // فوهة الحفرة: حلقة داكنة + عمق أسود
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(.72,.17,10,22), new THREE.MeshLambertMaterial({color:0x4e342e}));
+    rim.rotation.x=-Math.PI/2; rim.position.y=.56; rim.castShadow=true; g.add(rim);
+    const dark=new THREE.Mesh(new THREE.CircleGeometry(.7,22), new THREE.MeshBasicMaterial({color:0x0d0705}));
+    dark.rotation.x=-Math.PI/2; dark.position.y=.5; g.add(dark);
+    const wall=new THREE.Mesh(new THREE.CylinderGeometry(.7,.55,1.1,18,1,true),
+      new THREE.MeshLambertMaterial({color:0x3e2723,side:THREE.DoubleSide}));
+    wall.position.y=0; g.add(wall);
+    // مؤشر اتجاه الشفط (حلقات)
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.4,.05,8,18), new THREE.MeshBasicMaterial({color:0x8d6e63,transparent:true,opacity:.7}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=.62; ring.name='holeRing'; g.add(ring);
+    g.position.set(p.x,0,p.z);
+    holesGroup.add(g);
+  });
+}
+function makeHelicopter(color){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(THREE.CapsuleGeometry?new THREE.CapsuleGeometry(.5,.9,4,10):new THREE.SphereGeometry(.6,10,10),
+    new THREE.MeshLambertMaterial({color:color}));
+  body.rotation.z=Math.PI/2; body.castShadow=true; g.add(body);
+  const glass=new THREE.Mesh(new THREE.SphereGeometry(.34,10,10), new THREE.MeshLambertMaterial({color:0xbfe9ff}));
+  glass.position.set(.55,.08,0); g.add(glass);
+  const tail=new THREE.Mesh(new THREE.CylinderGeometry(.1,.16,1.6,8), new THREE.MeshLambertMaterial({color:color}));
+  tail.rotation.z=Math.PI/2; tail.position.set(-1.1,.12,0); g.add(tail);
+  const fin=new THREE.Mesh(new THREE.BoxGeometry(.36,.5,.07), new THREE.MeshLambertMaterial({color:color}));
+  fin.position.set(-1.85,.4,0); g.add(fin);
+  const mast=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.3,6), new THREE.MeshLambertMaterial({color:0x37474f}));
+  mast.position.y=.55; g.add(mast);
+  const rotor=new THREE.Mesh(new THREE.BoxGeometry(3,.05,.16), new THREE.MeshLambertMaterial({color:0x263238}));
+  rotor.position.y=.72; rotor.name='rotor'; g.add(rotor);
+  const rotor2=rotor.clone(); rotor2.rotation.y=Math.PI/2; rotor2.name='rotor'; g.add(rotor2);
+  // سلّم حبلي
+  const rope=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,1.9,6), new THREE.MeshLambertMaterial({color:0x8d6e63}));
+  rope.position.y=-1.05; g.add(rope);
+  for(let j=0;j<4;j++){
+    const step=new THREE.Mesh(new THREE.BoxGeometry(.4,.05,.08), new THREE.MeshLambertMaterial({color:0x6d4c2f}));
+    step.position.y=-.45-j*.45; g.add(step);
+  }
+  return g;
+}
+function buildHelis(){
+  if(helisGroup) scene.remove(helisGroup);
+  helisGroup=new THREE.Group(); scene.add(helisGroup);
+  Object.keys(helisMap).forEach((s,k)=>{
+    const p=sqPos(+s);
+    const heli=makeHelicopter([0xef6c00,0x00838f,0x5e35b1,0xc62828][k%4]);
+    heli.position.set(p.x,3.1,p.z);
+    heli.userData.home=p.clone();
+    helisGroup.add(heli);
+  });
+}
+
+
+/* ---------- الشخصيات ---------- */
+function makeCharacter(color){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.3,.38,1,12), new THREE.MeshLambertMaterial({color:color}));
+  body.position.y=.85; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.3,12,12), new THREE.MeshLambertMaterial({color:0xffdbb5}));
+  head.position.y=1.65; head.castShadow=true; g.add(head);
+  const cap=new THREE.Mesh(new THREE.SphereGeometry(.31,12,12,0,Math.PI*2,0,Math.PI/2), new THREE.MeshLambertMaterial({color:color}));
+  cap.position.y=1.7; g.add(cap);
+  const eyeM=new THREE.MeshBasicMaterial({color:0x222222});
+  [-0.11,0.11].forEach(x=>{ const e=new THREE.Mesh(new THREE.SphereGeometry(.045,6,6),eyeM); e.position.set(x,1.68,.26); g.add(e); });
+  const legM=new THREE.MeshLambertMaterial({color:0x37474f});
+  const lL=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.5,8),legM); lL.position.set(-.13,.25,0); lL.name='legL'; lL.castShadow=true; g.add(lL);
+  const lR=lL.clone(); lR.position.x=.13; lR.name='legR'; g.add(lR);
+  return g;
+}
+function placeCharacters(){
+  if(charsGroup) scene.remove(charsGroup);
+  charsGroup=new THREE.Group(); scene.add(charsGroup);
+  const p=sqPos(1);
+  GROUPS.forEach((g,i)=>{
+    g.pos=1; g.maxSq=0; g.mesh=makeCharacter(g.color);
+    // اصطفاف حول مربع البداية
+    const a=(i/GROUPS.length)*Math.PI*2;
+    g.mesh.position.set(p.x+Math.cos(a)*.85, .5, p.z+Math.sin(a)*.85);
+    charsGroup.add(g.mesh);
+  });
+}
+function charStandPos(g, sq){
+  const p=sqPos(sq);
+  // إزاحة صغيرة حتى لا تتداخل الشخصيات
+  const mates=GROUPS.filter(x=>x.pos===sq);
+  const idx=mates.indexOf(g);
+  const a=(idx/Math.max(1,mates.length))*Math.PI*2;
+  return new THREE.Vector3(p.x+Math.cos(a)*.4,.5,p.z+Math.sin(a)*.4);
+}
+
+/* ---------- الكاميرا ---------- */
+function camTop(immediate){
+  const N=cfg.N, size=N*TILE;
+  camMode='top';
+  camPos=new THREE.Vector3(0, size*1.05, size*.92);
+  camTarget=new THREE.Vector3(0,0,0);
+  if(immediate){ camera.position.copy(camPos); camera.lookAt(camTarget); }
+}
+function camFollow(g){
+  camMode='follow';
+  const p=g.mesh.position;
+  const N=cfg.N, r=Math.floor((g.pos-1)/N);
+  const dir=(r%2===0)?1:-1;
+  camPos=new THREE.Vector3(p.x - dir*6.5, 4.6, p.z+4.5);
+  camTarget=new THREE.Vector3(p.x, 1, p.z);
+}
+function camLookAtSq(sq,back){
+  camMode='look';
+  const p=sqPos(sq);
+  camPos=new THREE.Vector3(p.x+(back?4:0), 5.2, p.z+6);
+  camTarget=new THREE.Vector3(p.x,1,p.z);
+}
+
+/* ---------- حلقة الرسم ---------- */
+let heliSpin=0;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.05);
+  heliSpin+=dt*14;
+  if(helisGroup) helisGroup.children.forEach(hl=>{
+    hl.children.forEach(c=>{ if(c.name==='rotor') c.rotation.y=heliSpin; });
+    hl.position.y=3.1+Math.sin(heliSpin*.3+hl.userData.home.x)*0.12;
+  });
+  if(holesGroup) holesGroup.children.forEach(hg=>{
+    const ring=hg.children.find(c=>c.name==='holeRing');
+    if(ring){ ring.scale.setScalar(1+Math.sin(heliSpin*.5+hg.position.x)*.15); }
+  });
+  for(let i=tweens.length-1;i>=0;i--){
+    const tw=tweens[i];
+    tw.t+=dt;
+    const k=Math.min(1,tw.t/tw.dur);
+    tw.fn(easeIO(k));
+    if(k>=1){ tweens.splice(i,1); if(tw.onDone) tw.onDone(); }
+  }
+  // الكاميرا تتبع هدفها بنعومة
+  if(camPos){
+    camera.position.lerp(camPos,.06);
+    const cur=new THREE.Vector3(); camera.getWorldDirection(cur);
+    camera.lookAt(camTarget);
+  }
+  renderer.render(scene,camera);
+}
+
+
+/* ================= منطق اللعب ================= */
+function updateTurnUI(){
+  const g=GROUPS[curTurn];
+  $('turnName').innerHTML=`<span class="dot" style="background:#${g.color.toString(16).padStart(6,'0')}"></span> دور: ${g.name}`;
+  $('turnPos').textContent=`المربع ${g.pos} من ${cfg.N*cfg.N}`;
+  $('askBtn').disabled=animating||finishedGroups.has(g.id);
+}
+function nextTurn(){
+  if(animating) return;
+  hideQuestion();
+  let n=curTurn;
+  for(let k=0;k<GROUPS.length;k++){
+    n=(n+1)%GROUPS.length;
+    if(!finishedGroups.has(GROUPS[n].id)) break;
+  }
+  curTurn=n;
+  $('nextBtn').disabled=true;
+  $('askBtn').disabled=false;
+  updateTurnUI();
+  toast('الدور الآن: '+GROUPS[curTurn].name);
+}
+
+/* ---------- المشي عبر المربعات ---------- */
+function walkSteps(g, steps, done){
+  animating=true;
+  camFollow(g);
+  const total=cfg.N*cfg.N;
+  let remaining=Math.min(steps, total-g.pos);
+  if(remaining<=0){ animating=false; done(); return; }
+  const stepOne=()=>{
+    if(remaining<=0){
+      // الوصول أو تجاوز النهاية
+      if(g.pos>=total){ finishGroup(g); }
+      checkLanding(g, done);
+      return;
+    }
+    const from=g.mesh.position.clone();
+    g.pos++;
+    const to=charStandPos(g,g.pos);
+    camFollow(g);
+    tween(.38, k=>{
+      g.mesh.position.lerpVectors(from,to,k);
+      g.mesh.position.y=.5+Math.abs(Math.sin(k*Math.PI))*.35;   // قفزة مشي
+      const ll=g.mesh.getObjectByName('legL'), lr=g.mesh.getObjectByName('legR');
+      if(ll&&lr){ ll.rotation.x=Math.sin(k*Math.PI*2)*.6; lr.rotation.x=-Math.sin(k*Math.PI*2)*.6; }
+    }, ()=>{ remaining--; updateTurnUI(); stepOne(); });
+  };
+  stepOne();
+}
+function checkLanding(g, done){
+  const total=cfg.N*cfg.N;
+  if(g.pos>=total){ animating=false; done(); return; }
+  if(holesMap[g.pos]!==undefined){ holeSuck(g, holesMap[g.pos], done); return; }
+  if(helisMap[g.pos]!==undefined){ heliRide(g, helisMap[g.pos], done); return; }
+  animating=false;
+  awardPoints(g);
+  done();
+}
+/* الحفرة تشفط الشخصية */
+function holeSuck(g, target, done){
+  toast('🕳️ حفرة! شُفطت '+g.name+' إلى المربع '+target);
+  const m=g.mesh;
+  tween(.7, k=>{ m.scale.y=1-k*.9; m.position.y=.5-k*1.1; }, ()=>{
+    m.visible=false; m.scale.y=1;
+    // الكاميرا تنتقل لمكان الظهور
+    camLookAtSq(target,true);
+    setTimeout(()=>{
+      const to=charStandPos(g,target);
+      m.position.set(to.x,-1.1,to.z);
+      m.visible=true;
+      g.pos=target;
+      tween(.7, k=>{ m.position.y=-1.1+k*1.6; }, ()=>{
+        m.position.y=.5;
+        animating=false;
+        updateTurnUI();
+        done();
+      });
+    }, 650);
+  });
+}
+/* الهليكوبتر يحمل الشخصية */
+function heliRide(g, target, done){
+  toast('🚁 هليكوبتر! تحمل '+g.name+' إلى المربع '+target);
+  const m=g.mesh;
+  const heli=helisGroup.children.find(hl=>Math.abs(hl.userData.home.x-sqPos(g.pos).x)<.1 && Math.abs(hl.userData.home.z-sqPos(g.pos).z)<.1);
+  const fromSq=g.pos;
+  const rise=()=>{
+    const start=m.position.clone();
+    const hp=heli?heli.position.clone():sqPos(fromSq).add(new THREE.Vector3(0,3.1,0));
+    const attach=new THREE.Vector3(hp.x,hp.y-1.4,hp.z);
+    tween(.6, k=>{ m.position.lerpVectors(start,attach,k); }, ()=>{
+      // الهليكوبتر يطير بها
+      const tp=sqPos(target);
+      const hFrom=heli?heli.position.clone():attach;
+      const hTo=new THREE.Vector3(tp.x,3.1,tp.z);
+      camLookAtSq(target,false);
+      tween(1.4, k=>{
+        const pos=hFrom.clone().lerp(hTo,k);
+        pos.y=3.1+Math.sin(k*Math.PI)*1.2;
+        if(heli) heli.position.copy(pos);
+        m.position.set(pos.x,pos.y-1.4,pos.z);
+      }, ()=>{
+        // إنزال
+        const to=charStandPos(g,target);
+        tween(.55, k=>{ m.position.lerpVectors(new THREE.Vector3(hTo.x,hTo.y-1.4,hTo.z),to,k); }, ()=>{
+          g.pos=target;
+          if(heli){ const hb=heli.position.clone(); tween(.9, k=>{ heli.position.lerpVectors(hb,new THREE.Vector3(heli.userData.home.x,3.1,heli.userData.home.z),k); }); }
+          animating=false;
+          awardPoints(g);
+          updateTurnUI();
+          if(g.pos>=cfg.N*cfg.N) finishGroup(g);
+          done();
+        });
+      });
+    });
+  };
+  rise();
+}
+function finishGroup(g){
+  finishedGroups.add(g.id);
+  g.pos=cfg.N*cfg.N;
+  awardPoints(g);
+  $('winTxt').textContent=`${g.name} وصلت نهاية الحديقة! حصلت على أعلى درجة: ${g.earned} نقطة 🏆`;
+  $('winOverlay').style.display='flex';
+  updateTurnUI();
+}
+
+/* ================= الأسئلة والمؤقت ================= */
+let qTimer=null, qStart=0, curQ=null, pool=[], answered=false;
+const SEG_COLORS=['#16a34a','#65a30d','#ca8a04','#ea580c','#dc2626','#7f1d1d'];
+function buildPool(){
+  const chosen=[...document.querySelectorAll('#lessonsBox input:checked')].map(c=>c.value);
+  const type=cfg.qtype;
+  pool=QUESTIONS.filter(q=>chosen.includes(q.lesson) && (type==='both'||q.t===type));
+}
+function pickQuestion(){
+  if(!pool.length) buildPool();
+  if(!pool.length) return null;
+  const i=Math.floor(Math.random()*pool.length);
+  return pool.splice(i,1)[0];
+}
+function showQuestion(){
+  if(animating) return;
+  const g=GROUPS[curTurn];
+  curQ=pickQuestion();
+  if(!curQ){ toast('لا توجد أسئلة مطابقة للإعدادات — عدّل الدروس أو النوع'); return; }
+  answered=false;
+  $('qPanel').style.display='block';
+  $('qLesson').textContent='من درس: '+(LESSONS.find(L=>L.key===curQ.lesson)||{}).title||'';
+  $('qText').textContent=curQ.q;
+  $('qResult').textContent='';
+  const opts=$('qOpts'); opts.innerHTML='';
+  $('qJudge').style.display='none';
+  if(curQ.t==='mcq' && curQ.c && curQ.c.length>=2){
+    $('qJudge').style.display='none';
+    curQ.c.forEach((c,i)=>{
+      const b=document.createElement('button');
+      b.className='qOpt'; b.textContent=c;
+      b.onclick=()=>answerMCQ(i,b);
+      opts.appendChild(b);
+    });
+  }else{
+    $('qJudge').style.display='flex';
+    if(curQ.a) { const h=document.createElement('div'); h.className='hint'; h.style.textAlign='center'; h.style.marginBottom='6px'; h.textContent='الإجابة النموذجية: '+curQ.a; opts.appendChild(h); }
+  }
+  startTimer();
+}
+function hideQuestion(){
+  stopTimer();
+  $('qPanel').style.display='none';
+}
+function startTimer(){
+  const bar=$('timerBar'); bar.innerHTML='';
+  const segs=[];
+  for(let i=0;i<6;i++){ const s=document.createElement('div'); s.className='seg'; bar.appendChild(s); segs.push(s); }
+  qStart=performance.now();
+  const dur=cfg.dur*1000;
+  qTimer=setInterval(()=>{
+    const el=performance.now()-qStart;
+    const frac=Math.min(1,el/dur);
+    const lit=Math.ceil((1-frac)*6);
+    segs.forEach((s,i)=>{
+      s.style.background = i<lit ? SEG_COLORS[5-lit] : '#e5e0d0';
+    });
+    $('timerTxt').textContent='الوقت المتبقي: '+Math.max(0,Math.ceil((dur-el)/1000))+' ث — الإجابة الآن تمنح '+stepsNow()+' خطوات';
+    if(frac>=1){ timeUp(); }
+  },100);
+}
+function stopTimer(){ if(qTimer){ clearInterval(qTimer); qTimer=null; } }
+function stepsNow(){
+  const el=performance.now()-qStart;
+  const seg=Math.min(5,Math.floor(el/(cfg.dur*1000/6)));
+  return 6-seg;
+}
+function timeUp(){
+  if(answered) return;
+  answered=true; stopTimer();
+  $('qResult').textContent='⏰ انتهى الوقت! لا تقدم — اضغط «الجولة التالية»';
+  $('qResult').style.color='#b91c1c';
+  $('nextBtn').disabled=false;
+  $('askBtn').disabled=true;
+}
+function answerMCQ(i,btn){
+  if(answered) return;
+  answered=true;
+  const steps=stepsNow();
+  stopTimer();
+  const correct=i===curQ.a;
+  [...$('qOpts').querySelectorAll('.qOpt')].forEach((b,j)=>{ if(j===curQ.a) b.classList.add('correct'); b.disabled=true; });
+  if(correct){
+    $('qResult').textContent='✅ إجابة صحيحة! تتقدم '+steps+(steps>2?' خطوات':' خطوة');
+    $('qResult').style.color='#15803d';
+    $('askBtn').disabled=true;
+    setTimeout(()=>{ hideQuestion(); walkSteps(GROUPS[curTurn],steps,()=>{ $('nextBtn').disabled=false; camTop(false); }); },900);
+  }else{
+    btn.classList.add('wrong');
+    $('qResult').textContent='❌ إجابة خاطئة! لا تقدم — اضغط «الجولة التالية»';
+    $('qResult').style.color='#b91c1c';
+    $('nextBtn').disabled=false;
+  }
+}
+$('jYes').onclick=()=>{
+  if(answered) return;
+  answered=true;
+  const steps=stepsNow();
+  stopTimer();
+  $('qResult').textContent='✅ إجابة صحيحة! تتقدم '+steps+(steps>2?' خطوات':' خطوة');
+  $('qResult').style.color='#15803d';
+  $('askBtn').disabled=true;
+  setTimeout(()=>{ hideQuestion(); walkSteps(GROUPS[curTurn],steps,()=>{ $('nextBtn').disabled=false; camTop(false); }); },900);
+};
+$('jNo').onclick=()=>{
+  if(answered) return;
+  answered=true; stopTimer();
+  $('qResult').textContent='❌ إجابة خاطئة! لا تقدم — اضغط «الجولة التالية»';
+  $('qResult').style.color='#b91c1c';
+  $('nextBtn').disabled=false;
+};
+$('askBtn').onclick=showQuestion;
+$('nextBtn').onclick=nextTurn;
+$('newGameBtn').onclick=()=>{
+  if(animating) return;
+  if(!confirm('لعبة جديدة؟ ستتغير أماكن الحفر والهليكوبترات عشوائياً وتعود المجموعات للبداية (النقاط المكتسبة تبقى محفوظة).')) return;
+  hideQuestion();
+  finishedGroups.clear();
+  randPlace(); buildHoles(); buildHelis(); placeCharacters();
+  curTurn=0; $('nextBtn').disabled=true; $('askBtn').disabled=false;
+  camTop(false);
+  updateTurnUI();
+};
+
+/* ================= بدء التشغيل ================= */
+function loadSettings(){
+  try{
+    const s=JSON.parse(localStorage.getItem('sl_cfg:'+G_CLS)||'null');
+    if(s){ $('setN').value=s.N; $('setHoles').value=s.holes; $('setHelis').value=s.helis; $('setDur').value=s.dur;
+      const r=document.querySelector(`input[name=qtype][value="${s.qtype}"]`); if(r) r.checked=true;
+      cfg.lessons=s.lessons||null;
+      $('nHint').textContent=`${s.N} × ${s.N} = ${s.N*s.N} مربع`;
+      window._savedLessons=s.lessons;
+    }
+  }catch(e){}
+}
+$('startBtn').onclick=async ()=>{
+  cfg.N=Math.max(5,Math.min(12,+$('setN').value||10));
+  cfg.holes=Math.max(1,Math.min(30,+$('setHoles').value||8));
+  cfg.helis=Math.max(1,Math.min(30,+$('setHelis').value||8));
+  cfg.dur=Math.max(6,Math.min(120,+$('setDur').value||12));
+  cfg.qtype=document.querySelector('input[name=qtype]:checked').value;
+  cfg.lessons=[...document.querySelectorAll('#lessonsBox input:checked')].map(c=>c.value);
+  localStorage.setItem('sl_cfg:'+G_CLS, JSON.stringify(cfg));
+  buildPool();
+  if(!pool.length){ toast('⚠️ لا توجد أسئلة مطابقة — اختر دروساً فيها أسئلة'); return; }
+  $('startBtn').disabled=true; $('startBtn').textContent='جارٍ تجهيز الحديقة…';
+  randPlace(); buildBoard(); buildHoles(); buildHelis(); placeCharacters();
+  camTop(true);
+  $('setup').style.display='none';
+  $('hud').style.display='flex';
+  renderScores(); updateTurnUI();
+  gameStarted=true;
+  toast('أهلاً بكم في حديقة السلم والثعبان! 🌳 الدور: '+GROUPS[0].name);
+};
+(async function boot(){
+  initScene();
+  buildGarden();
+  buildBoard();       // لوح مبدئي بالحجم الافتراضي خلف شاشة الإعدادات
+  camTop(true);
+  animate();
+  loadSettings();
+  await loadGroups();
+  // طلب الأسئلة من الصفحة الأم إن لم تصل
+  setTimeout(()=>{ if(!QUESTIONS.length) try{ parent.postMessage({type:'sl_need_questions'},'*'); }catch(e){} },1200);
+})();
+
+</script>
+</body>
+</html>
