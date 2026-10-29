@@ -406,6 +406,27 @@ function buildBoard(){
     shine.name='riverShine';
     riversGroup.add(shine);
   }
+  // جسور خشبية: تصل آخر مربع في كل صف بأول مربع في الصف التالي فوق الجدول
+  const woodMat=new THREE.MeshLambertMaterial({color:0x8d6e63});
+  const woodDark=new THREE.MeshLambertMaterial({color:0x5d4023});
+  for(let r=0;r<N-1;r++){
+    const a=sqPos((r+1)*N), b=sqPos((r+1)*N+1);
+    const bg=new THREE.Group();
+    const deck=new THREE.Mesh(new THREE.BoxGeometry(1.05,.1,TILE+.45), woodMat);
+    deck.position.y=.5; deck.castShadow=true; deck.receiveShadow=true; bg.add(deck);
+    // درابزينان جانبيان
+    [-0.52,0.52].forEach(dx=>{
+      const rail=new THREE.Mesh(new THREE.BoxGeometry(.09,.3,TILE+.45), woodDark);
+      rail.position.set(dx,.68,0); rail.castShadow=true; bg.add(rail);
+    });
+    // دعامتان عند طرفي الجسر
+    [-1,1].forEach(s=>{
+      const beam=new THREE.Mesh(new THREE.BoxGeometry(1.1,.55,.14), woodDark);
+      beam.position.set(0,.28,s*(TILE/2+.14)); bg.add(beam);
+    });
+    bg.position.set((a.x+b.x)/2, 0, (a.z+b.z)/2);
+    boardGroup.add(bg);
+  }
 }
 
 /* ---------- الحفر (الثعابين) والهليكوبترات (السلالم) ---------- */
