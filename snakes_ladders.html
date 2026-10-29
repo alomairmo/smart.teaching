@@ -77,7 +77,7 @@
 <!-- شاشة الإعدادات -->
 <div id="setup">
   <div class="setupCard">
-    <h1>🐍 السلم والثعبان — الحديقة</h1>
+    <h1>🌲 السلم والثعبان — الغابة</h1>
     <div class="sub">لعبة جماعية ثلاثية الأبعاد: كل مجموعة تتقدم بإجابتها الصحيحة، وسرعة الإجابة تحدد عدد الخطوات</div>
 
     <div class="secT">⚙️ إعدادات الملعب</div>
@@ -162,7 +162,7 @@
 <div id="winOverlay"><div id="winCard"><h2>🏆 فوز!</h2><p id="winTxt"></p><br><button class="gbtn primary" onclick="document.getElementById('winOverlay').style.display='none'">متابعة</button></div></div>
 
 <script>
-/* ================= السلم والثعبان — الحديقة ================= */
+/* ================= السلم والثعبان — الغابة ================= */
 const P=new URLSearchParams(location.search);
 const G_CLS=P.get('cls')||'g4', G_W=+(P.get('w')||1);
 const SB_URL="https://lazyikoawttfcflpdixs.supabase.co", SB_KEY="sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
@@ -246,7 +246,7 @@ function renderScores(){
 
 /* ================= مشهد ثلاثي الأبعاد ================= */
 let scene,camera,renderer,clock;
-let boardGroup, charsGroup, holesGroup, helisGroup;
+let boardGroup, riversGroup, charsGroup, holesGroup, helisGroup;
 let camMode='top', camTarget=null, camPos=null;
 const tweens=[];
 function tween(dur,fn,onDone){ tweens.push({t:0,dur,fn,onDone}); }
@@ -290,42 +290,54 @@ function sqPos(i){
   return new THREE.Vector3(-half+TILE/2 + c*TILE, 0, half-TILE/2 - r*TILE);
 }
 
-/* ---------- بناء الحديقة ---------- */
+/* ---------- بناء الغابة ---------- */
 function buildGarden(){
   const N=cfg.N, size=N*TILE;
-  // العشب
-  const grass=new THREE.Mesh(new THREE.PlaneGeometry(size*3.2,size*3.2),
-    new THREE.MeshLambertMaterial({color:0x5d9c4a}));
+  // أرضية الغابة — عشب أخضر داكن
+  const grass=new THREE.Mesh(new THREE.PlaneGeometry(size*3.6,size*3.6),
+    new THREE.MeshLambertMaterial({color:0x3e7a30}));
   grass.rotation.x=-Math.PI/2; grass.position.y=-.05; grass.receiveShadow=true;
   scene.add(grass);
   // إطار حجري حول اللوح
   const border=new THREE.Mesh(new THREE.BoxGeometry(size+2.4,.5,size+2.4),
-    new THREE.MeshLambertMaterial({color:0x9c8e7a}));
+    new THREE.MeshLambertMaterial({color:0x8d7c66}));
   border.position.y=.02; border.receiveShadow=true; scene.add(border);
   const inner=new THREE.Mesh(new THREE.BoxGeometry(size+1.2,.62,size+1.2),
-    new THREE.MeshLambertMaterial({color:0xcfc3a8}));
+    new THREE.MeshLambertMaterial({color:0xc9b384}));
   inner.position.y=.05; inner.receiveShadow=true; scene.add(inner);
 
-  // أشجار حول الحديقة
+  // غابة كثيفة حول اللوح — حلقتان من الأشجار
   const treePos=[];
-  const R=size*1.05;
-  for(let k=0;k<14;k++){
-    const a=k/14*Math.PI*2 + (k%2)*.2;
-    treePos.push([Math.cos(a)*R*(1+.15*((k*7)%3)/3), Math.sin(a)*R*(1+.15*((k*5)%3)/3)]);
+  for(let k=0;k<16;k++){
+    const a=k/16*Math.PI*2 + (k%2)*.2;
+    const R=size*1.02;
+    treePos.push([Math.cos(a)*R*(1+.15*((k*7)%3)/3), Math.sin(a)*R*(1+.15*((k*5)%3)/3), 1]);
   }
-  treePos.forEach(([x,z],k)=>{
+  for(let k=0;k<20;k++){
+    const a=k/20*Math.PI*2 + .16;
+    const R=size*1.32;
+    treePos.push([Math.cos(a)*R*(1+.12*((k*5)%3)/3), Math.sin(a)*R*(1+.12*((k*7)%3)/3), 1.4]);
+  }
+  treePos.forEach(([x,z,sc],k)=>{
     const g=new THREE.Group();
-    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,1.6,8), new THREE.MeshLambertMaterial({color:0x6d4c2f}));
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,1.6,8), new THREE.MeshLambertMaterial({color:0x5d4023}));
     trunk.position.y=.8; trunk.castShadow=true; g.add(trunk);
-    const leafC=[0x2e7d32,0x388e3c,0x43a047][k%3];
+    const leafC=[0x1b5e20,0x2e7d32,0x33691e,0x388e3c][k%4];
     const l1=new THREE.Mesh(new THREE.ConeGeometry(1.5,2.6,8), new THREE.MeshLambertMaterial({color:leafC}));
     l1.position.y=2.6; l1.castShadow=true; g.add(l1);
     const l2=new THREE.Mesh(new THREE.ConeGeometry(1.05,1.8,8), new THREE.MeshLambertMaterial({color:leafC}));
     l2.position.y=3.8; l2.castShadow=true; g.add(l2);
     g.position.set(x,0,z);
-    const s=.8+((k*13)%5)*.15; g.scale.setScalar(s);
+    const s=(.8+((k*13)%5)*.15)*sc; g.scale.setScalar(s);
     scene.add(g);
   });
+  // شجيرات صغيرة بين الأشجار
+  for(let k=0;k<18;k++){
+    const a=Math.random()*Math.PI*2, rr=size*.68+Math.random()*size*.42;
+    const b=new THREE.Mesh(new THREE.SphereGeometry(.45+((k*11)%4)*.14,8,8),
+      new THREE.MeshLambertMaterial({color:[0x2f6b2a,0x3a7d34,0x558b2f][k%3]}));
+    b.position.set(Math.cos(a)*rr,.28,Math.sin(a)*rr); b.scale.y=.7; b.castShadow=true; scene.add(b);
+  }
   // أزهار متناثرة
   for(let k=0;k<26;k++){
     const a=Math.random()*Math.PI*2, rr=size*.62+Math.random()*size*.35;
@@ -361,21 +373,38 @@ function makeTextSprite(txt,size,color,bg){
 function buildBoard(){
   if(boardGroup) scene.remove(boardGroup);
   boardGroup=new THREE.Group(); scene.add(boardGroup);
-  const N=cfg.N, total=N*N;
-  const cA=new THREE.MeshLambertMaterial({color:0xe8dfc3});
-  const cB=new THREE.MeshLambertMaterial({color:0xd8cba5});
-  const cStart=new THREE.MeshLambertMaterial({color:0x81c784});
+  if(riversGroup) scene.remove(riversGroup);
+  riversGroup=new THREE.Group(); scene.add(riversGroup);
+  const N=cfg.N, total=N*N, half=N*TILE/2;
+  // مربعات الطريق الترابي — بني ترابي متناوب
+  const cA=new THREE.MeshLambertMaterial({color:0xb5854e});
+  const cB=new THREE.MeshLambertMaterial({color:0xa3743e});
+  const cStart=new THREE.MeshLambertMaterial({color:0x7cb342});
   const cEnd=new THREE.MeshLambertMaterial({color:0xffd54f});
   for(let i=1;i<=total;i++){
     const p=sqPos(i);
-    const tile=new THREE.Mesh(new THREE.BoxGeometry(TILE-.12,.34,TILE-.12),
+    const tile=new THREE.Mesh(new THREE.BoxGeometry(TILE-.16,.34,TILE-.62),
       i===1?cStart:(i===total?cEnd:(((Math.floor((i-1)/N)+(i-1)%N)%2===0)?cA:cB)));
     tile.position.set(p.x,.34,p.z);
     tile.receiveShadow=true; tile.castShadow=true;
     boardGroup.add(tile);
-    const num=makeTextSprite(String(i),.9, i===total?'#7a4d00':'#5a5240');
+    const num=makeTextSprite(String(i),.9, i===total?'#7a4d00':'#4e3a1e');
     num.position.set(p.x,.52,p.z);
     boardGroup.add(num);
+  }
+  // جداول ماء بين صفوف الطريق
+  const waterMat=new THREE.MeshLambertMaterial({color:0x2f9fd8, transparent:true, opacity:.92});
+  for(let r=0;r<N-1;r++){
+    const z=half-(r+1)*TILE;
+    const river=new THREE.Mesh(new THREE.BoxGeometry(N*TILE+.9,.3,.85), waterMat);
+    river.position.set(0,.32,z);
+    riversGroup.add(river);
+    // خط لمّاع في وسط الجدول (يتحرك في حلقة الرسم)
+    const shine=new THREE.Mesh(new THREE.PlaneGeometry(N*TILE+.6,.18),
+      new THREE.MeshBasicMaterial({color:0x9adcf5, transparent:true, opacity:.5}));
+    shine.rotation.x=-Math.PI/2; shine.position.set(0,.485,z);
+    shine.name='riverShine';
+    riversGroup.add(shine);
   }
 }
 
@@ -566,6 +595,13 @@ function animate(){
     const ring=hg.children.find(c=>c.name==='holeRing');
     if(ring){ ring.scale.setScalar(1+Math.sin(heliSpin*.5+hg.position.x)*.15); }
   });
+  // تموّج جداول الماء
+  if(riversGroup) riversGroup.children.forEach((rv,i)=>{
+    if(rv.name==='riverShine'){
+      rv.material.opacity=.3+Math.sin(heliSpin*.5+i*.9)*.22;
+      rv.position.x=Math.sin(heliSpin*.35+i*1.7)*.35;
+    }
+  });
   for(let i=tweens.length-1;i>=0;i--){
     const tw=tweens[i];
     tw.t+=dt;
@@ -706,7 +742,7 @@ function finishGroup(g){
   finishedGroups.add(g.id);
   g.pos=cfg.N*cfg.N;
   awardPoints(g);
-  $('winTxt').textContent=`${g.name} وصلت نهاية الحديقة! حصلت على أعلى درجة: ${g.earned} نقطة 🏆`;
+  $('winTxt').textContent=`${g.name} وصلت نهاية الغابة! حصلت على أعلى درجة: ${g.earned} نقطة 🏆`;
   $('winOverlay').style.display='flex';
   updateTurnUI();
 }
@@ -888,7 +924,7 @@ $('startBtn').onclick=async ()=>{
   localStorage.setItem('sl_cfg:'+G_CLS, JSON.stringify(cfg));
   buildPool();
   if(!pool.length){ toast('⚠️ لا توجد أسئلة مطابقة — اختر دروساً فيها أسئلة'); return; }
-  $('startBtn').disabled=true; $('startBtn').textContent='جارٍ تجهيز الحديقة…';
+  $('startBtn').disabled=true; $('startBtn').textContent='جارٍ تجهيز الغابة…';
   /* استئناف تقدم محفوظ لنفس الأسبوع وحجم الملعب */
   const sv=slLoad();
   const canResume=sv && sv.N===cfg.N && Array.isArray(sv.groups) && sv.groups.length===GROUPS.length
@@ -920,7 +956,7 @@ $('startBtn').onclick=async ()=>{
   $('hud').style.display='flex';
   renderScores(); updateTurnUI();
   gameStarted=true;
-  toast('أهلاً بكم في حديقة السلم والثعبان! 🌳 الدور: '+GROUPS[0].name);
+  toast('أهلاً بكم في غابة السلم والثعبان! 🌲 الدور: '+GROUPS[0].name);
 };
 (async function boot(){
   initScene();
