@@ -425,6 +425,30 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
 .modalCard textarea{width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; resize:vertical; line-height:1.8}
 @media (max-width:600px){ .cqTypes{flex-direction:column} }
 .weekcard.curWeek{border:2px solid var(--teal); box-shadow:0 0 0 4px rgba(63,111,106,.15), var(--shadow)}
+/* ====== آيات القرآن في تبويب الكتاب + تقييم التلاوة ====== */
+.ayahCtl{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:12px}
+.ayahChk{display:flex; align-items:center; gap:6px; font-size:.88rem; font-weight:700; color:#3d372c; cursor:pointer}
+.ayahChk input[type=checkbox]{width:18px; height:18px; accent-color:var(--teal)}
+.ayahChk input[type=number]{font:inherit; padding:3px 6px; border:1.5px solid #d8cfb8; border-radius:8px; text-align:center}
+.ayahList{background:#fffdf7; border:1px solid #e8dfc8; border-radius:14px; padding:14px 18px; max-height:60vh; overflow-y:auto}
+.ayahLine{display:flex; align-items:flex-start; gap:10px; padding:8px 6px; border-bottom:1px dashed #eee5cf; border-radius:8px}
+.ayahLine:last-child{border-bottom:0}
+.ayahLine.playing{background:#fff6d8; box-shadow:inset 0 0 0 2px #e5c76b}
+.ayahTxt{flex:1; font-size:1.35rem; line-height:2.1; color:#1f2a1f}
+.ayahNum{color:#8a6d1d; font-size:1.1rem}
+.ayahPlayBtn{min-width:40px; height:40px; border-radius:50%; border:0; background:linear-gradient(135deg,#2e7d4f,#1d5c43); color:#fff; font-size:1rem; cursor:pointer; flex-shrink:0}
+.ayahPlayBtn.playing{background:linear-gradient(135deg,#b45309,#92400e)}
+.surahHead{text-align:center; font-weight:800; color:#1d5c43; font-size:1.15rem; margin:12px 0 4px}
+.basmalah{text-align:center; font-size:1.4rem; color:#3d372c; padding:6px 0 2px}
+#recSession{margin:0 0 16px; border:2px solid #8a6d1d}
+.recTurnHead{text-align:center; font-size:1.15rem; font-weight:800; color:#1d5c43; margin-bottom:8px}
+.recMembers{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+.recStuName{text-align:center; font-size:1.3rem; font-weight:800; color:#1d5c43; margin-bottom:10px}
+.recAyahs{margin-bottom:12px}
+.recGradeRow{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin-top:8px}
+.recCustomWrap{display:flex; gap:6px; align-items:center}
+.recCustomVal{width:110px}
+.recSavedMsg{text-align:center; font-weight:800; color:var(--teal); margin-top:8px; min-height:22px}
 /* ====== جلسة الاختبار بالاختيار التلقائي داخل تبويب «اختبر معلوماتك» ====== */
 #qSession{margin:0 0 16px; border:2px solid var(--teal)}
 .qsTop{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px}
@@ -38966,7 +38990,7 @@ async function renderQuiz(cls,w,li,box){
     const base=baseRaw.map((it,bi)=> ovr[bi] ? ovr[bi] : it);
     const qs=base.concat(cqList(cls,key));
     const oldSession = box.querySelector('#qSession'); /* الحفاظ على لوحة الجلسة إن كانت مفتوحة */
-    box.innerHTML = `<div class="quizBar"><button class="pbtn2" id="qAddBtn">➕ إضافة سؤال</button><span class="syncWrap"><button class="pbtn2 ghost" id="qWsBtn">🖨️ تصدير ورقة عمل</button></span><button class="pbtn2" id="qPlayBtn">🎯 اختبار بالاختيار التلقائي</button></div>` +
+    box.innerHTML = `<div class="quizBar"><button class="pbtn2" id="qAddBtn">➕ إضافة سؤال</button><span class="syncWrap"><button class="pbtn2 ghost" id="qWsBtn">🖨️ تصدير ورقة عمل</button></span><button class="pbtn2" id="qPlayBtn">🎯 اختبار بالاختيار التلقائي</button>${lessonAyahRanges(((weekData(cls,w)||{}).lessons||[])[li]||'').length ? '<button class="pbtn2" id="qRecBtn" style="background:linear-gradient(135deg,#8a6d1d,#6d5516)">📖 تقييم التلاوة</button>' : ''}</div>` +
       (qs.length ? qs.map((it,qi)=>{
         const tag = it._cid!==undefined ? ` <span class="qBadge">أضافها المعلم</span><button class="qDel qEdit" data-cid="${it._cid}" title="تعديل السؤال">✏️</button><button class="qDel" data-cid="${it._cid}" title="حذف السؤال">🗑️</button>`
           : ` <button class="qDel qEditB" data-bi="${qi}" title="تعديل السؤال">✏️</button>${ovr[qi] ? '<span class="qBadge">عدّلها المعلم</span><button class="qDel qRestoreB" data-bi="'+qi+'" title="استعادة السؤال الأصلي">↩️</button>' : ''}`;
@@ -38979,6 +39003,8 @@ async function renderQuiz(cls,w,li,box){
     box.querySelector('#qAddBtn').onclick=()=>openAddQuestionModal(cls,w,li,()=>paint());
     box.querySelector('#qWsBtn').onclick=e=>{ e.stopPropagation(); wsToggleMenu(cls,w,li,box); };
     box.querySelector('#qPlayBtn').onclick=()=>qsOpenSettings(cls,w,li,box);
+    const qRecBtn=box.querySelector('#qRecBtn');
+    if(qRecBtn) qRecBtn.onclick=()=>recOpenSettings(cls,w,li,box);
     box.querySelectorAll('.qEdit').forEach(b=>b.onclick=()=>{
       const it = cqList(cls,key).find(x=>String(x._cid)===String(b.dataset.cid));
       if(it) openAddQuestionModal(cls,w,li,()=>paint(),it);
@@ -39024,6 +39050,405 @@ async function renderQuiz(cls,w,li,box){
     await fetchCustomQuestions(cls,key);
     if(box.isConnected) paint(); /* إلحاق أسئلة المعلم بعد التحميل */
   }
+}
+
+
+/* ====== آيات دروس القرآن الكريم: النص العثماني + تلاوة المنشاوي (مرتل) + تقييم التلاوة ======
+   المصدر: api.quran.com (النص العثماني) و verses.quran.com (صوت المنشاوي المرتل مقسّماً آية-آية) */
+const QURAN_AYAH_COUNTS=[7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128,111,110,98,135,112,78,118,64,77,227,93,88,69,60,34,30,73,54,45,83,182,88,75,85,54,53,89,59,37,35,38,29,18,45,60,49,62,55,78,96,29,22,24,13,14,11,11,18,12,12,30,52,52,44,28,28,20,56,40,31,50,40,46,42,29,19,36,25,22,17,19,26,30,20,15,21,11,8,8,19,5,8,28,15,11,35,11,8,7,15,15,17,5,5,6,3,5,4,5,6];
+const QURAN_SURAH_MAP={'الحديد':57,'الواقعة':56,'المدثر':74,'يس':36,'الصافات':37,'ص':38,'الزخرف':43,'الدخان':44,'فاطر':35,'فصلت':41,'الشورى':42,'الذاريات':51,'الطور':52,'النجم':53,'القمر':54,'الرحمن':55,'المعارج':70,'المزمل':73,'القلم':68};
+const QURAN_AUDIO_BASE='https://verses.quran.com/Minshawi/Murattal/mp3/';
+function quranAudioUrl(s,a){ return QURAN_AUDIO_BASE + String(s).padStart(3,'0') + String(a).padStart(3,'0') + '.mp3'; }
+/* استخراج مقاطع الآيات من عنوان الدرس: «تلاوة/حفظ سورة X من (أ) إلى (ب)» أو «سورة X الآية (ن) نهاية السورة» */
+function lessonAyahRanges(l){
+  const out=[];
+  const re=/سورة\s+(.+?)(?:\s+الآية\s*\((\d+)\)\s*نهاية السورة|\s+من\s*\((\d+)\)\s*إلى\s*\((\d+)\))/g;
+  let m;
+  while((m=re.exec(l||''))){
+    const s=QURAN_SURAH_MAP[m[1].trim()];
+    if(!s) continue;
+    const cnt=QURAN_AYAH_COUNTS[s-1];
+    if(m[2]){
+      let f=+m[2]; if(f>cnt) f=cnt;
+      out.push({s:s,from:f,to:cnt});
+    }else{
+      let f=+m[3], t=+m[4];
+      if(f>cnt) f=cnt; if(t>cnt) t=cnt;
+      if(f>=1 && t>=f) out.push({s:s,from:f,to:t});
+    }
+  }
+  return out;
+}
+function ayahRangesFlat(ranges){
+  const arr=[];
+  ranges.forEach(r=>{ for(let a=r.from;a<=r.to;a++) arr.push({s:r.s,a:a}); });
+  return arr;
+}
+/* تحميل النص العثماني لسورة كاملة (كاش في الذاكرة + التخزين المحلي) */
+const _quranTextMem={};
+async function fetchSurahTexts(s){
+  if(_quranTextMem[s]) return _quranTextMem[s];
+  const lsKey='quranTxt:'+s;
+  try{
+    const cached=localStorage.getItem(lsKey);
+    if(cached){ const obj=JSON.parse(cached); _quranTextMem[s]=obj; return obj; }
+  }catch(e){}
+  const r=await fetch('https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number='+s+'&per_page=300');
+  const d=await r.json();
+  const obj={};
+  (d.verses||[]).forEach(v=>{ obj[+v.verse_key.split(':')[1]]=v.text_uthmani; });
+  _quranTextMem[s]=obj;
+  try{ localStorage.setItem(lsKey, JSON.stringify(obj)); }catch(e){}
+  return obj;
+}
+async function fetchRangesTexts(ranges){
+  const surahs=[...new Set(ranges.map(r=>r.s))];
+  const out={};
+  for(const s of surahs) out[s]=await fetchSurahTexts(s);
+  return out;
+}
+/* مشغّل صوتي موحّد للآيات */
+let quranAudioEl=null, quranSeqCtl=null;
+function quranStop(){
+  if(quranSeqCtl) quranSeqCtl.stop=true;
+  if(quranAudioEl){ try{ quranAudioEl.pause(); }catch(e){} quranAudioEl=null; }
+  document.querySelectorAll('.ayahLine.playing').forEach(x=>x.classList.remove('playing'));
+  document.querySelectorAll('.ayahPlayBtn.playing').forEach(x=>x.classList.remove('playing'));
+}
+function quranPlayOne(s,a,onEnd,lineEl,btnEl){
+  quranStop();
+  quranAudioEl=new Audio(quranAudioUrl(s,a));
+  if(lineEl) lineEl.classList.add('playing');
+  if(btnEl) btnEl.classList.add('playing');
+  quranAudioEl.onended=()=>{
+    if(lineEl) lineEl.classList.remove('playing');
+    if(btnEl) btnEl.classList.remove('playing');
+    quranAudioEl=null;
+    if(onEnd) onEnd();
+  };
+  quranAudioEl.onerror=()=>{
+    if(lineEl) lineEl.classList.remove('playing');
+    if(btnEl) btnEl.classList.remove('playing');
+    quranAudioEl=null;
+    showToast('تعذّر تحميل الصوت — تحقق من الاتصال');
+    if(onEnd) onEnd();
+  };
+  quranAudioEl.play().catch(()=>{ if(quranAudioEl) quranAudioEl.onerror(); });
+}
+/* ===== تبويب الكتاب: عرض آيات الدرس مع التلاوة ===== */
+async function setupBookAyahs(cls,w,li,pane){
+  const box=pane && pane.querySelector('#bookAyahs');
+  if(!box) return;
+  const l=(weekData(cls,w)||{}).lessons ? weekData(cls,w).lessons[li] : '';
+  const ranges=lessonAyahRanges(l);
+  if(!ranges.length){
+    box.innerHTML='<div class="ddEmpty" style="margin-top:14px">لم يُتعرَّف على آيات محددة من عنوان هذا الدرس.</div>';
+    return;
+  }
+  const ayahs=ayahRangesFlat(ranges);
+  const surahNames=ranges.map(r=>{
+    const nm=Object.keys(QURAN_SURAH_MAP).find(k=>QURAN_SURAH_MAP[k]===r.s);
+    return 'سورة '+nm+' ('+r.from+'–'+r.to+')';
+  }).join(' + ');
+  box.innerHTML=`
+    <h3 style="text-align:center;margin-bottom:4px">📖 ${escH(l)}</h3>
+    <div style="text-align:center;color:var(--muted);font-size:.85rem;margin-bottom:10px">${escH(surahNames)} — ${ayahs.length} آية — القارئ: محمد صديق المنشاوي (مرتل)</div>
+    <div class="ayahCtl">
+      <button class="pbtn2" id="ayPlayAll">▶️ تشغيل التلاوة كاملة</button>
+      <button class="pbtn2 ghost" id="ayStop" disabled>⏹ إيقاف</button>
+      <label class="ayahChk"><input type="checkbox" id="ayRepAll"> 🔁 تكرار المقطع كاملاً</label>
+      <label class="ayahChk"><input type="checkbox" id="ayRepEach"> 🔂 تكرار كل آية</label>
+      <span class="ayahChk" id="ayRepNRow" style="display:none"><input type="number" id="ayRepN" min="2" max="10" value="2" style="width:56px"> مرات</span>
+    </div>
+    <div class="ayahList" id="ayahList"><div style="padding:20px;text-align:center;color:var(--muted)">جارٍ تحميل نص الآيات…</div></div>`;
+  const listEl=box.querySelector('#ayahList');
+  const stopBtn=box.querySelector('#ayStop');
+  const playAllBtn=box.querySelector('#ayPlayAll');
+  const repEach=box.querySelector('#ayRepEach');
+  repEach.onchange=()=>{ box.querySelector('#ayRepNRow').style.display=repEach.checked?'':'none'; };
+  let texts;
+  try{ texts=await fetchRangesTexts(ranges); }
+  catch(e){
+    if(!listEl.isConnected) return;
+    listEl.innerHTML='<div class="ddEmpty">تعذّر تحميل نص الآيات — تحقق من الاتصال بالإنترنت ثم أعد فتح الدرس.</div>';
+    return;
+  }
+  if(!listEl.isConnected) return;
+  let html='';
+  let lastS=0;
+  ayahs.forEach((ay,i)=>{
+    if(ay.s!==lastS){
+      lastS=ay.s;
+      const nm=Object.keys(QURAN_SURAH_MAP).find(k=>QURAN_SURAH_MAP[k]===ay.s);
+      html+='<div class="surahHead">﴿ سورة '+nm+' ﴾</div>';
+      if(ay.a===1 && ay.s!==1 && ay.s!==9)
+        html+='<div class="basmalah">بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ</div>';
+    }
+    const txt=(texts[ay.s]||{})[ay.a]||'';
+    html+='<div class="ayahLine" data-i="'+i+'"><span class="ayahTxt">'+txt+' <span class="ayahNum">﴿'+ay.a+'﴾</span></span><button class="ayahPlayBtn" data-i="'+i+'" title="استماع لهذه الآية">▶</button></div>';
+  });
+  listEl.innerHTML=html;
+  /* تشغيل آية واحدة */
+  listEl.querySelectorAll('.ayahPlayBtn').forEach(b=>{
+    b.onclick=()=>{
+      const i=+b.dataset.i, ay=ayahs[i];
+      quranPlayOne(ay.s, ay.a, null, b.closest('.ayahLine'), b);
+    };
+  });
+  /* التشغيل التسلسلي مع خيارات التكرار */
+  playAllBtn.onclick=()=>{
+    const repAll=box.querySelector('#ayRepAll').checked;
+    const repN=repEach.checked ? Math.max(2,Math.min(10,+box.querySelector('#ayRepN').value||2)) : 1;
+    const ctl={stop:false};
+    quranSeqCtl=ctl;
+    stopBtn.disabled=false; playAllBtn.disabled=true;
+    let idx=0, left=repN;
+    const step=()=>{
+      if(ctl.stop){ stopBtn.disabled=true; playAllBtn.disabled=false; return; }
+      if(idx>=ayahs.length){
+        if(repAll){ idx=0; left=repN; }
+        else { quranStop(); stopBtn.disabled=true; playAllBtn.disabled=false; return; }
+      }
+      const ay=ayahs[idx];
+      const line=listEl.querySelector('.ayahLine[data-i="'+idx+'"]');
+      const btn=line && line.querySelector('.ayahPlayBtn');
+      if(line) line.scrollIntoView({block:'center',behavior:'smooth'});
+      quranAudioEl=new Audio(quranAudioUrl(ay.s,ay.a));
+      if(line) line.classList.add('playing');
+      if(btn) btn.classList.add('playing');
+      quranAudioEl.onended=()=>{
+        if(line) line.classList.remove('playing');
+        if(btn) btn.classList.remove('playing');
+        quranAudioEl=null;
+        if(ctl.stop){ stopBtn.disabled=true; playAllBtn.disabled=false; return; }
+        left--;
+        if(left<=0){ idx++; left=repN; }
+        step();
+      };
+      quranAudioEl.onerror=()=>{
+        if(line) line.classList.remove('playing');
+        if(btn) btn.classList.remove('playing');
+        quranAudioEl=null;
+        showToast('تعذّر تحميل الصوت — تحقق من الاتصال');
+        if(ctl.stop){ stopBtn.disabled=true; playAllBtn.disabled=false; return; }
+        idx++; left=repN; step();
+      };
+      quranAudioEl.play().catch(()=>{ if(quranAudioEl) quranAudioEl.onerror(); });
+    };
+    step();
+  };
+  stopBtn.onclick=()=>{ quranStop(); stopBtn.disabled=true; playAllBtn.disabled=false; };
+}
+/* ===== جلسة تقييم التلاوة داخل تبويب «اختبر معلوماتك» ===== */
+let recSession=null;
+function recOpenSettings(cls,w,li,box){
+  const l=(weekData(cls,w)||{}).lessons ? weekData(cls,w).lessons[li] : '';
+  const ranges=lessonAyahRanges(l);
+  if(!ranges.length){ showToast('لم يُتعرَّف على آيات لهذا الدرس'); return; }
+  const critOpts=colsOf(cls).map((c,i)=>'<option value="'+i+'"'+(i===5?' selected':'')+'>'+escH(c.n)+'</option>').join('');
+  const ov=openModal(`
+    <h3>📖 تقييم تلاوة الآيات — ${escH(ROSTERS[cls].class)}</h3>
+    <div class="frow"><label>طريقة السحب</label>
+      <select id="recMode"><option value="students">بالطلاب</option><option value="groups">بالمجموعات</option></select></div>
+    <div class="frow"><label>طريقة الاختيار</label>
+      <select id="recMethod">
+        <option value="random">عشوائي</option>
+        <option value="name">ترتيب اسمي</option>
+        <option value="total">بحسب مجمل الدرجات</option>
+        <option value="points">بحسب نقاط الطالب (هذا الأسبوع)</option>
+        ${colsOf(cls).map((c,i)=>'<option value="col'+i+'">بحسب درجة: '+escH(c.n)+'</option>').join('')}
+      </select></div>
+    <div class="frow"><label>اتجاه الترتيب</label>
+      <select id="recDir"><option value="desc">تنازلي (يبدأ من أ / الأعلى)</option><option value="asc">تصاعدي (يبدأ من ي / الأدنى)</option></select></div>
+    <div class="frow"><label>عرض الآيات</label>
+      <select id="recAyahMode">
+        <option value="all">جميع الآيات دفعة واحدة</option>
+        <option value="one">آية واحدة في كل مرة</option>
+      </select></div>
+    <div class="frow"><label>الأسبوع الذي تُسجَّل فيه الدرجة</label>
+      <select id="recWeek">${WEEKS.map(x=>'<option value="'+x+'"'+(x===w?' selected':'')+'>'+weekLabel(x)+'</option>').join('')}</select></div>
+    <div class="frow"><label>المعيار الذي تُسجَّل فيه الدرجة</label><select id="recCrit">${critOpts}</select></div>
+    <div class="frow"><label>قيمة الدرجة الكاملة</label><input id="recVal" type="number" min="0" max="10" value="5"></div>
+    <div class="pkBtns"><button class="pbtn2" id="recStart">بدء</button><button class="pbtn2 ghost" id="recCancel">إلغاء</button></div>`);
+  ov.querySelector('#recCancel').onclick=()=>ov.remove();
+  ov.querySelector('#recStart').onclick=async ()=>{
+    const mode=ov.querySelector('#recMode').value;
+    const method=ov.querySelector('#recMethod').value;
+    const dir=ov.querySelector('#recDir').value;
+    const regW=+ov.querySelector('#recWeek').value;
+    const crit=+ov.querySelector('#recCrit').value;
+    let val=parseFloat(ov.querySelector('#recVal').value); if(isNaN(val)) val=5;
+    val=Math.max(0,Math.min(colMax(cls,crit),val));
+    const ayahMode=ov.querySelector('#recAyahMode').value;
+    const startBtn=ov.querySelector('#recStart');
+    startBtn.disabled=true; startBtn.textContent='جارٍ التحضير…';
+    await fetchClassMarks(cls);
+    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
+    if(method==='points') await fetchStuPoints(cls);
+    if(mode==='groups' && !(groupsCache[cls] && groupsCache[cls].defs && groupsCache[cls].defs.length)){
+      startBtn.disabled=false; startBtn.textContent='بدء';
+      alert('لا توجد مجموعات في هذا الفصل بعد — أنشئها من تبويب درجات المجموعات أولاً.');
+      return;
+    }
+    let queue=[];
+    if(mode==='groups'){
+      queue=groupsCache[cls].defs.map(d=>d.id);
+      if(method==='name') queue.sort((a,b)=>groupsCache[cls].defs.find(d=>d.id===a).name.localeCompare(groupsCache[cls].defs.find(d=>d.id===b).name,'ar'));
+      else if(method==='total') queue.sort((a,b)=>groupTotal(cls,b,regW)-groupTotal(cls,a,regW));
+      if(method==='random'){ for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; } }
+      else if(dir==='asc') queue.reverse();
+    }else{
+      const n=ROSTERS[cls].students.length;
+      queue=Array.from({length:n},(_,i)=>i);
+      if(method==='name') queue.sort((a,b)=>ROSTERS[cls].students[a].localeCompare(ROSTERS[cls].students[b],'ar'));
+      else if(method==='total') queue.sort((a,b)=>studentValue(cls,regW,b,'total')-studentValue(cls,regW,a,'total'));
+      else if(method==='points') queue.sort((a,b)=>getStuPoints(cls,b,regW)-getStuPoints(cls,a,regW));
+      else if(method.startsWith('col')) queue.sort((a,b)=>studentValue(cls,regW,b,method.slice(3))-studentValue(cls,regW,a,method.slice(3)));
+      if(method==='random'){ for(let i=queue.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [queue[i],queue[j]]=[queue[j],queue[i]]; } }
+      else if(dir==='asc') queue.reverse();
+    }
+    let texts;
+    try{ texts=await fetchRangesTexts(ranges); }
+    catch(e){ startBtn.disabled=false; startBtn.textContent='بدء'; alert('تعذّر تحميل نص الآيات — تحقق من الاتصال.'); return; }
+    ov.remove();
+    recSession={cls,w:regW,li,box,crit,val,mode,queue,idx:0,
+      ayahs:ayahRangesFlat(ranges), ayahIdx:0, ayahMode, texts,
+      cur:{stuId:null,gid:null}};
+    recBuildPanel();
+    recNextTurn();
+  };
+}
+function recBuildPanel(){
+  const s=recSession; if(!s) return;
+  let panel=s.box.querySelector('#recSession');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='recSession';
+    panel.className='weekcard';
+    s.box.insertBefore(panel, s.box.firstChild);
+  }
+  panel.innerHTML=`
+    <div class="qsTop">
+      <span class="qsTitle">📖 تقييم التلاوة — ${escH(ROSTERS[s.cls].class)} — تُسجَّل في: ${weekLabel(s.w)} — المعيار: ${escH(colName(s.cls,s.crit))} (الكاملة ${s.val})</span>
+      <button class="pbtn2 ghost" id="recFull" style="font-size:.85rem">⛶ ملء الشاشة</button>
+      <button class="pbtn2 danger" id="recEnd" style="font-size:.85rem">✖ إنهاء</button>
+    </div>
+    <div id="recBody"></div>`;
+  panel.querySelector('#recEnd').onclick=()=>recEnd();
+  panel.querySelector('#recFull').onclick=()=>{
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else if(panel.requestFullscreen) panel.requestFullscreen();
+  };
+}
+function recEnd(){
+  const s=recSession; if(!s) return;
+  quranStop();
+  if(document.fullscreenElement) document.exitFullscreen();
+  const panel=s.box.querySelector('#recSession');
+  if(panel) panel.remove();
+  recSession=null;
+}
+function recAyahHtml(s, idxList){
+  let html='<div class="ayahList recAyahs">';
+  let lastS=0;
+  idxList.forEach(i=>{
+    const ay=s.ayahs[i];
+    if(ay.s!==lastS && s.ayahs.filter(x=>x.s===ay.s).length>1){
+      lastS=ay.s;
+      const nm=Object.keys(QURAN_SURAH_MAP).find(k=>QURAN_SURAH_MAP[k]===ay.s);
+      if(idxList.length>1) html+='<div class="surahHead">﴿ سورة '+nm+' ﴾</div>';
+    }
+    const txt=(s.texts[ay.s]||{})[ay.a]||'';
+    html+='<div class="ayahLine" data-i="'+i+'"><span class="ayahTxt">'+txt+' <span class="ayahNum">﴿'+ay.a+'﴾</span></span><button class="ayahPlayBtn" data-i="'+i+'" title="استماع">▶</button></div>';
+  });
+  html+='</div>';
+  return html;
+}
+function recWireAyahPlay(s, body){
+  body.querySelectorAll('.ayahPlayBtn').forEach(b=>{
+    b.onclick=()=>{
+      const ay=s.ayahs[+b.dataset.i];
+      quranPlayOne(ay.s, ay.a, null, b.closest('.ayahLine'), b);
+    };
+  });
+}
+function recNextTurn(){
+  const s=recSession; if(!s) return;
+  const body=s.box.querySelector('#recBody'); if(!body) return;
+  if(s.idx>=s.queue.length){
+    body.innerHTML='<div style="text-align:center;padding:24px"><div style="font-size:1.3rem;font-weight:800;color:var(--teal)">انتهت الجولة ✅</div><div class="note" style="margin-top:8px">تم تقييم '+(s.mode==='groups'?'كل المجموعات':'كل الطلاب')+' — يمكنك إنهاء الجلسة.</div></div>';
+    return;
+  }
+  const cur=s.queue[s.idx]; s.idx++;
+  if(s.mode==='groups'){
+    const def=groupsCache[s.cls].defs.find(d=>d.id===cur);
+    const names=(def?def.members:[]).map(mi=>ROSTERS[s.cls].students[mi]);
+    body.innerHTML=`
+      <div class="recTurnHead">المجموعة: <b>${escH(def?def.name:'')}</b></div>
+      <div class="note" style="text-align:center;margin-bottom:10px">اختر الطالب الذي سيتلو من هذه المجموعة:</div>
+      <div class="recMembers">${(def?def.members:[]).map(mi=>'<button class="pbtn2 recMember" data-si="'+mi+'">'+escH(ROSTERS[s.cls].students[mi])+'</button>').join('')}</div>`;
+    body.querySelectorAll('.recMember').forEach(b=>{
+      b.onclick=()=>recShowFor(+b.dataset.si);
+    });
+    if(!def || !def.members.length) setTimeout(()=>recNextTurn(), 50);
+    return;
+  }
+  recShowFor(cur);
+}
+function recShowFor(si){
+  const s=recSession; if(!s) return;
+  const body=s.box.querySelector('#recBody'); if(!body) return;
+  s.cur.stuId=si;
+  const name=ROSTERS[s.cls].students[si];
+  let idxList;
+  if(s.ayahMode==='one'){
+    idxList=[s.ayahIdx % s.ayahs.length];
+  }else{
+    idxList=s.ayahs.map((_,i)=>i);
+  }
+  body.innerHTML=`
+    <div class="recStuName">🎤 يتلو الآن: <b>${escH(name)}</b></div>
+    ${s.ayahMode==='one'?'<div class="note" style="text-align:center;margin-bottom:6px">الآية المطلوبة: رقم '+s.ayahs[idxList[0]].a+' — اضغط ▶ للاستماع أو اطلب من الطالب تلاوتها</div>':''}
+    ${recAyahHtml(s, idxList)}
+    <div class="recGradeRow">
+      <button class="pbtn2 recFullMark">✅ درجة كاملة (${s.val})</button>
+      <button class="pbtn2 danger recZeroMark">❌ صفر</button>
+      <span class="recCustomWrap"><input type="number" class="recCustomVal" min="0" max="${colMax(s.cls,s.crit)}" step="0.5" placeholder="درجة مخصصة"> <button class="pbtn2 ghost recCustomBtn">تأكيد</button></span>
+    </div>
+    <div class="recSavedMsg"></div>`;
+  recWireAyahPlay(s, body);
+  body.querySelector('.recFullMark').onclick=()=>recSave(s.val);
+  body.querySelector('.recZeroMark').onclick=()=>recSave(0);
+  body.querySelector('.recCustomBtn').onclick=()=>{
+    const v=parseFloat(body.querySelector('.recCustomVal').value);
+    if(isNaN(v)){ showToast('أدخل درجة صحيحة'); return; }
+    recSave(Math.max(0,Math.min(colMax(s.cls,s.crit),v)));
+  };
+}
+async function recSave(v){
+  const s=recSession; if(!s) return;
+  const si=s.cur.stuId; if(si===null||si===undefined) return;
+  const body=s.box.querySelector('#recBody'); if(!body) return;
+  const msg=body.querySelector('.recSavedMsg');
+  body.querySelectorAll('.recGradeRow button, .recGradeRow input').forEach(x=>x.disabled=true);
+  pkSndGood();
+  const store=marksCache[s.cls].data;
+  if(!store[s.w]) store[s.w]={};
+  if(!store[s.w][si]) store[s.w][si]={};
+  store[s.w][si][s.crit]=v;
+  if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(s.cls,s.w,si,s.crit);
+  if(msg){ msg.textContent='جارٍ الحفظ…'; }
+  try{
+    await pushMark(s.cls,s.w,si,s.crit,v);
+    if(msg) msg.textContent='✓ حُفظت الدرجة ('+v+') — الانتقال للتالي…';
+  }catch(e){
+    if(msg) msg.textContent='تعذّر الحفظ — تحقق من الاتصال';
+    body.querySelectorAll('.recGradeRow button, .recGradeRow input').forEach(x=>x.disabled=false);
+    return;
+  }
+  quranStop();
+  if(s.ayahMode==='one') s.ayahIdx++;
+  setTimeout(()=>{ if(recSession) recNextTurn(); }, 700);
 }
 
 /* ====== جلسة «اختبار بالاختيار التلقائي» داخل تبويب اختبر معلوماتك ====== */
@@ -40363,7 +40788,7 @@ function openLessonPage(cls,w,li){
           </div>
         </div>
         <div id="bookScroll"><div id="bookZoom">` + pages.map(p=>`<div class="bookPgW" data-src="${p}"><img class="bookPg" loading="lazy" draggable="false" src="${p}" alt="صفحة من الكتاب" onerror="var d=document.createElement('div');d.style.cssText='padding:24px;text-align:center;color:#b00020;background:#fff3f3;border:1px solid #e0b4b4;border-radius:10px;margin:8px;direction:rtl';d.textContent='تعذّر تحميل الصفحة — صوّر هذه الرسالة وأرسلها للمطوّر: '+this.src;this.replaceWith(d);"><canvas class="bookCv draw"></canvas></div>`).join('') + `</div></div>`
-        : '<div class="ddEmpty" style="margin-top:14px">لا توجد صفحات كتاب مرتبطة بهذا الدرس (دروس القرآن الكريم حفظاً وتلاوة ليس لها صفحات في كتاب الدراسات).</div>'}
+        : (isQuranL ? '<div id="bookAyahs" class="weekcard" style="margin-top:14px"><div style="padding:20px;text-align:center;color:var(--muted)">جارٍ تحميل آيات الدرس…</div></div>' : '<div class="ddEmpty" style="margin-top:14px">لا توجد صفحات كتاب مرتبطة بهذا الدرس (دروس القرآن الكريم حفظاً وتلاوة ليس لها صفحات في كتاب الدراسات).</div>')}
     </div>
     <div class="lpPane" id="lpPaneQuiz" style="display:none"></div>
     ${isQuranL ? '<div class="lpPane" id="lpPaneQE" style="display:none"></div>' : ''}
@@ -40461,6 +40886,7 @@ function openLessonPage(cls,w,li){
     rerQE();
   }
   initBookTab(cls,w,li,lp.querySelector('#lpPaneBook'));
+  if(isQuranL) setupBookAyahs(cls,w,li,lp.querySelector('#lpPaneBook'));
   initLpClassPanes(cls, w, li, lp);
   /* الاختيار التلقائي من صفحة الدرس */
   lp.querySelector('#lpPick').onclick=()=>{
