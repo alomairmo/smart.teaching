@@ -176,7 +176,7 @@ let holesMap={}, helisMap={};   // square -> target square
 let curTurn=0, animating=false, gameStarted=false, finishedGroups=new Set();
 const TILE=2.2;
 
-const GROUP_COLORS=[0xd32f2f,0x1976d2,0x388e3c,0xf9a825,0x7b1fa2,0x00838f,0xe64a19,0x5d4037];
+const GROUP_COLORS=[0x1976d2,0xf9a825,0xd32f2f,0x388e3c,0x7b1fa2,0x00838f,0xe64a19,0x5d4037];
 const $=id=>document.getElementById(id);
 function toast(t,ms){ const el=$('toast'); el.textContent=t; el.style.display='block'; clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',ms||2200); }
 
