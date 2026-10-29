@@ -337,6 +337,22 @@
                 <textarea id="questions-input"
                     class="w-full h-40 p-3 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right mb-4"
                     placeholder="السؤال&#10;الإجابة الصحيحة&#10;إجابة خاطئة&#10;إجابة خاطئة&#10;..."></textarea>
+                <div style="border-top:1px dashed #475569;padding-top:12px;margin-bottom:12px">
+                    <p class="text-sm text-yellow-300 font-bold mb-2 text-center">📚 أو اختر من أسئلة المنهج (تُدمج مع الملصوقة أعلاه):</p>
+                    <div style="display:flex;gap:14px;justify-content:center;font-size:.88rem;font-weight:700;margin-bottom:8px;flex-wrap:wrap">
+                        <label style="cursor:pointer"><input type="radio" name="bsqtype" value="both" checked> خيارات ومقالية</label>
+                        <label style="cursor:pointer"><input type="radio" name="bsqtype" value="mcq"> خيارات فقط</label>
+                        <label style="cursor:pointer"><input type="radio" name="bsqtype" value="open"> مقالية فقط</label>
+                    </div>
+                    <div style="text-align:center;margin-bottom:6px">
+                        <button id="bs-all-l" class="text-xs" style="padding:3px 12px;border-radius:8px;border:1px solid #64748b;background:#334155;color:#e2e8f0;cursor:pointer;font-weight:700">تحديد الكل</button>
+                        <button id="bs-no-l" class="text-xs" style="padding:3px 12px;border-radius:8px;border:1px solid #64748b;background:#334155;color:#e2e8f0;cursor:pointer;font-weight:700">إلغاء الكل</button>
+                    </div>
+                    <div id="bs-lessons-box" style="max-height:150px;overflow-y:auto;background:#1e293b;border-radius:8px;padding:8px;text-align:right;font-size:.85rem;color:#e2e8f0"></div>
+                    <div id="bs-save-row" style="display:none;margin-top:8px;text-align:center">
+                        <button id="bs-reset-save" style="padding:5px 14px;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,.15);color:#fca5a5;cursor:pointer;font-weight:700;font-size:.82rem">🗑️ مسح اللعبة المحفوظة لهذا الأسبوع</button>
+                    </div>
+                </div>
                 <button id="start-btn"
                     class="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold py-3 rounded text-xl transition-colors">ابدأ
                     اللعبة 🚀</button>
@@ -365,6 +381,7 @@
                     <button id="replay-questions-btn" onclick="replayPreviousQuestions()" disabled>🔄 إعادة الأسئلة
                         السابقة</button>
                     <button id="add-questions-btn-main" onclick="openAddQ()">➕ إضافة أسئلة جديدة</button>
+                    <div class="text-xs text-gray-400 mt-3" style="line-height:1.9">⌨️ لوحة الأرقام: 1-9 لاختيار الإجابة • + صحيحة • - خاطئة<br>8/2/4/6 تحريك أو تصويب • Enter/0 انتقال وإطلاق • . تخطي الحركة</div>
                 </div>
             </div>
         </div>
@@ -664,6 +681,66 @@
         }
         function isInGrid(gx, gy) { return gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE; }
         function shuffleArray(a) { let ci = a.length, ri; while (ci) { ri = Math.floor(Math.random() * ci); ci--;[a[ci], a[ri]] = [a[ri], a[ci]]; } return a; }
+        /* ---------- بنك أسئلة المنهج القادم من الصفحة الأم ---------- */
+        let QBANK = { lessons: [], list: [] };
+        window.addEventListener('message', e => {
+            const d = e.data || {};
+            if (d.type === 'bs_bank') { QBANK = { lessons: d.lessons || [], list: d.list || [] }; buildBsLessonsBox(); }
+        });
+        function buildBsLessonsBox() {
+            const box = document.getElementById('bs-lessons-box'); if (!box) return;
+            box.innerHTML = '';
+            const counts = {}; QBANK.list.forEach(q => counts[q.lesson] = (counts[q.lesson] || 0) + 1);
+            if (!QBANK.lessons.length) { box.innerHTML = '<div style="color:#94a3b8;text-align:center">لم تصل أسئلة المنهج بعد — يمكنك اللصق اليدوي أعلاه</div>'; return; }
+            QBANK.lessons.forEach(L => {
+                const c = counts[L.key] || 0;
+                const lb = document.createElement('label');
+                lb.style.cssText = 'display:flex;gap:6px;align-items:center;padding:2px 0;cursor:pointer';
+                lb.innerHTML = `<input type="checkbox" value="${L.key}" ${c ? 'checked' : ''} ${c ? '' : 'disabled'}> <span>${L.title} <span style="color:#94a3b8">(${c} سؤال)</span></span>`;
+                box.appendChild(lb);
+            });
+        }
+        document.getElementById('bs-all-l').onclick = e => { e.preventDefault(); document.querySelectorAll('#bs-lessons-box input:not(:disabled)').forEach(c => c.checked = true); };
+        document.getElementById('bs-no-l').onclick = e => { e.preventDefault(); document.querySelectorAll('#bs-lessons-box input').forEach(c => c.checked = false); };
+        function bankQuestions() {
+            const chosen = [...document.querySelectorAll('#bs-lessons-box input:checked')].map(c => c.value);
+            const type = (document.querySelector('input[name=bsqtype]:checked') || {}).value || 'both';
+            const out = [];
+            QBANK.list.forEach(it => {
+                if (!chosen.includes(it.lesson)) return;
+                if (type !== 'both' && it.t !== type) return;
+                if (it.t === 'mcq' && it.c && it.c.length >= 2) {
+                    const correct = it.c[it.a];
+                    const wrongs = it.c.filter((_, i2) => i2 !== it.a).slice(0, 3);
+                    out.push({ q: it.q, correct: correct, options: [correct, ...wrongs] });
+                } else if (it.t === 'open') {
+                    out.push({ q: it.q, open: true, a: it.a || '' });
+                }
+            });
+            return out;
+        }
+
+        /* ---------- حفظ تقدم اللعبة محلياً (استكمالها في يوم آخر من نفس الأسبوع) ---------- */
+        const BS_STATE_KEY = 'bs_state:' + G_CLS + ':' + G_W;
+        function bsSave() {
+            if (gameState === 'SETUP') return;
+            try {
+                localStorage.setItem(BS_STATE_KEY, JSON.stringify({
+                    v: 1, terrain: terrainGrid,
+                    ships: shipsData.map(s => ({ id: s.id, gid: s.gid, gx: s.gridX, gy: s.gridY,
+                        rot: s.mesh ? s.mesh.rotation.y : 0, health: s.health, energy: s.energy, dead: s.isDead,
+                        shield: s.shield, halfMove: s.halfMove, autoRepeat: s.autoRepeat,
+                        trajectory: s.trajectory, mineMode: s.mineMode, bigCannon: s.bigCannon })),
+                    chests: chests.map(c => ({ gx: c.gx, gy: c.gy })),
+                    mines: seaMines.map(m => ({ gx: m.gx, gy: m.gy })),
+                    cpi: currentPlayerIndex,
+                    questions: questions, usedQuestions: usedQuestions, originalQuestions: originalQuestions
+                }));
+            } catch (e) {}
+        }
+        function bsLoad() { try { return JSON.parse(localStorage.getItem(BS_STATE_KEY) || 'null'); } catch (e) { return null; } }
+        function bsClear() { try { localStorage.removeItem(BS_STATE_KEY); } catch (e) {} }
+
         function parseQuestions(t) {
             const ln = t.split('\n').map(l => l.trim()).filter(l => l.length > 0), p = [];
             for (let i = 0; i < ln.length; i += 4)if (ln[i + 1] && ln[i + 2] && ln[i + 3]) p.push({ q: ln[i], correct: ln[i + 1], options: [ln[i + 1], ln[i + 2], ln[i + 3]] });
@@ -863,7 +940,15 @@
         // ============================================================
         //  INIT
         // ============================================================
-        generateTerrain(); renderTerrain();
+        { const _sv = bsLoad();
+          if (_sv && _sv.terrain && _sv.terrain.length === GRID_SIZE) terrainGrid = _sv.terrain;
+          else generateTerrain();
+          renderTerrain();
+          const rs = document.getElementById('bs-save-row');
+          if (rs && _sv) rs.style.display = '';
+          const rb = document.getElementById('bs-reset-save');
+          if (rb) rb.onclick = e => { e.preventDefault(); if (confirm('مسح اللعبة المحفوظة لهذا الأسبوع؟ سيبدأ اللعب من جديد.')) { bsClear(); rs.style.display='none'; location.reload(); } };
+        }
 
         { const sb=document.getElementById('start-btn'); sb.disabled=true; sb.textContent='جارٍ تحميل المجموعات…'; }
         loadGroups();
@@ -1242,6 +1327,7 @@
         //  TURN MGMT
         // ============================================================
         function nextTurn() {
+            bsSave();
             if (checkWinCondition()) return;
             hideAlert(); clearTrajectory();
             // Clear per-turn power-ups (halfMove, trajectory)
@@ -1252,6 +1338,7 @@
         }
 
         function afterShotResolve() {
+            bsSave();
             const cs = shipsData[currentPlayerIndex];
             if (pendingAutoRepeat && cs && !cs.isDead && cs.energy >= 2) {
                 pendingAutoRepeat = false; cs.energy -= 2;
@@ -1313,6 +1400,21 @@
             const qi = Math.floor(Math.random() * questions.length);
             currentQuestion = questions[qi]; questions.splice(qi, 1); usedQuestions.push(currentQuestion);
             ui.qText.innerText = currentQuestion.q;
+            if (currentQuestion.open) {
+                /* سؤال مقالي: يعرض السؤال والإجابة النموذجية ويقيّمها المعلم */
+                ui.qText.className = 'text-xl md:text-2xl mb-6 font-semibold text-purple-300 leading-relaxed';
+                ui.optionsBox.innerHTML = '';
+                if (currentQuestion.a) {
+                    const h = document.createElement('div');
+                    h.style.cssText = 'color:#94a3b8;font-size:.95rem;margin-bottom:12px;line-height:1.8';
+                    h.innerText = 'الإجابة النموذجية: ' + currentQuestion.a;
+                    ui.optionsBox.appendChild(h);
+                }
+                const mk = (txt, isC) => { const b = document.createElement('button'); b.className = 'bg-slate-700 text-white font-bold py-4 px-6 rounded-lg transition-all text-xl border-l-4 shadow-md'; b.style.borderColor = isC ? '#22c55e' : '#ef4444'; b.innerText = txt; b.onclick = () => handleAnswer(isC); ui.optionsBox.appendChild(b); };
+                mk('✅ جواب صحيح', true); mk('❌ جواب خاطئ', false);
+                updateReplayBtn();
+                return;
+            }
             const opts = [...currentQuestion.options]; shuffleArray(opts);
             ui.optionsBox.innerHTML = '';
             opts.forEach(opt => {
@@ -1328,6 +1430,7 @@
         //  ANSWER HANDLING
         // ============================================================
         function handleAnswer(isCorrect) {
+            bsSave();
             const ship = shipsData[currentPlayerIndex];
             ui.trivia.classList.add('hidden'); ui.centerContainer.classList.add('hidden');
             if (isCorrect) {
@@ -1412,7 +1515,7 @@
                 ship.mesh.position.set(twp.x, 0, twp.z);
                 checkChestPickup(ship);
                 checkMineCollision(ship);
-                gameState = 'MOVING'; updateHUD(); updateFloatingLabels(); updateMovePanel();
+                gameState = 'MOVING'; updateHUD(); updateFloatingLabels(); updateMovePanel(); bsSave();
                 const np = ship.mesh.position.clone();
                 animateCamera(new THREE.Vector3(np.x + 80, 320, np.z + 180), np);
                 // Auto-end if energy depleted
@@ -1585,6 +1688,53 @@
         });
 
         // ============================================================
+        //  NUMPAD CONTROL — كل شيء عدا شاشة الإعدادات
+        // ============================================================
+        window.addEventListener('keydown', e => {
+            const c = e.code;
+            if (!/^Numpad/.test(c)) return;
+            if (gameState === 'SETUP') return;
+            if (gameState === 'TRIVIA') {
+                if (/^Numpad[1-9]$/.test(c)) {
+                    const btns = [...ui.optionsBox.querySelectorAll('button')];
+                    const b = btns[+c.slice(6) - 1];
+                    if (b) { b.click(); e.preventDefault(); }
+                } else if (c === 'NumpadAdd') {
+                    const b = ui.optionsBox.querySelector('button');      /* ✅ صحيح */
+                    if (b) { b.click(); e.preventDefault(); }
+                } else if (c === 'NumpadSubtract') {
+                    const btns = ui.optionsBox.querySelectorAll('button'); /* ❌ خطأ */
+                    if (btns[1]) { btns[1].click(); e.preventDefault(); }
+                }
+            } else if (gameState === 'MOVING') {
+                const m = { Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0] };
+                if (m[c]) { window.attemptMove(...m[c]); e.preventDefault(); }
+                if (c === 'NumpadEnter' || c === 'Numpad0') { window.proceedToShooting(); e.preventDefault(); }
+                if (c === 'NumpadDecimal' || c === 'NumpadSubtract') { window.skipMovementTurn(); e.preventDefault(); }
+            } else if (gameState === 'AIMING') {
+                const s = shipsData[currentPlayerIndex];
+                if (c === 'Numpad4') { aimYaw = (aimYaw + 2); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (c === 'Numpad6') { aimYaw = (aimYaw - 2); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (c === 'Numpad8') { aimPitch = Math.min(35, aimPitch + 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (c === 'Numpad2') { aimPitch = Math.max(-5, aimPitch - 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
+                if (c === 'NumpadEnter' || c === 'Numpad0') {
+                    e.preventDefault(); gameState = 'POWER';
+                    document.getElementById('aiming-ui').classList.add('hidden');
+                    document.getElementById('power-ui').classList.remove('hidden');
+                    const pInstr = s.trajectory ? 'حدد القوة ⬆️⬇️ ثم [مسافة] 🎯 المسار مرئي ومضاعف!' : 'حدد القوة ⬆️⬇️ ثم [مسافة] للإطلاق!';
+                    document.getElementById('shooting-instructions').innerText = pInstr;
+                    if (s.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); }
+                }
+            } else if (gameState === 'POWER') {
+                const cs = shipsData[currentPlayerIndex];
+                const maxPow = cs.trajectory ? 600 : 300;
+                if (c === 'Numpad8') { aimPower = Math.min(maxPow, aimPower + 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
+                if (c === 'Numpad2') { aimPower = Math.max(50, aimPower - 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
+                if (c === 'NumpadEnter' || c === 'Numpad0') { e.preventDefault(); fireCannon(); }
+            }
+        });
+
+        // ============================================================
         //  FIRE CANNON
         // ============================================================
         function fireCannon() {
@@ -1665,7 +1815,55 @@
         //  START BUTTON
         // ============================================================
         document.getElementById('start-btn').addEventListener('click', () => {
-            questions = parseQuestions(document.getElementById('questions-input').value);
+            const sv = bsLoad();
+            if (sv && sv.ships && sv.ships.length === shipsData.length
+                && confirm('توجد لعبة محفوظة لهذا الأسبوع.\nهل تريد استكمالها من حيث توقفت؟\n\n«موافق» = استكمال — «إلغاء» = لعبة جديدة')) {
+                /* ---- استئناف اللعبة المحفوظة ---- */
+                questions = sv.questions || []; usedQuestions = sv.usedQuestions || []; originalQuestions = sv.originalQuestions || [];
+                ui.setup.classList.add('hidden');
+                ui.hud.classList.remove('hidden');
+                document.getElementById('copy-scores-row').classList.remove('hidden');
+                ui.labels.classList.remove('hidden');
+                sv.ships.forEach(ss => {
+                    const ship = shipsData.find(x => x.id === ss.id);
+                    if (!ship) return;
+                    ship.gridX = ss.gx; ship.gridY = ss.gy;
+                    const wp = gridToWorld(ss.gx, ss.gy);
+                    ship.mesh.position.set(wp.x, 0, wp.z);
+                    ship.mesh.rotation.y = ss.rot || 0;
+                    ship.health = ss.health; ship.energy = ss.energy || 0;
+                    ship.shield = !!ss.shield; ship.halfMove = !!ss.halfMove; ship.autoRepeat = !!ss.autoRepeat;
+                    ship.trajectory = !!ss.trajectory; ship.mineMode = !!ss.mineMode; ship.bigCannon = !!ss.bigCannon;
+                    if (ss.dead) { ship.health = 0; destroyShip(ship); }
+                });
+                /* استرجاع الصناديق */
+                chests.forEach(c => scene.remove(c.mesh)); chests.length = 0;
+                (sv.chests || []).forEach(c => {
+                    const wp = gridToWorld(c.gx, c.gy);
+                    const mesh = createChestMesh(); mesh.position.set(wp.x, 1, wp.z);
+                    scene.add(mesh); chests.push({ gx: c.gx, gy: c.gy, mesh });
+                });
+                /* استرجاع الألغام */
+                seaMines.forEach(m => scene.remove(m.mesh)); seaMines.length = 0;
+                (sv.mines || []).forEach(mn => {
+                    const wp = gridToWorld(mn.gx, mn.gy);
+                    const mm = createMineMesh(); mm.position.set(wp.x, 2, wp.z); scene.add(mm);
+                    seaMines.push({ gx: mn.gx, gy: mn.gy, mesh: mm });
+                });
+                pendingAutoRepeat = false;
+                updateHUD();
+                currentPlayerIndex = Math.min(sv.cpi || 0, shipsData.length - 1);
+                if (shipsData[currentPlayerIndex] && shipsData[currentPlayerIndex].isDead) {
+                    const alive = shipsData.findIndex(s => !s.isDead);
+                    currentPlayerIndex = alive >= 0 ? alive : 0;
+                }
+                showAlert('📂 تم استكمال اللعبة المحفوظة', 'تكملون من حيث توقفتم', 'text-yellow-300', 'border-yellow-400');
+                setTimeout(() => { hideAlert(); startTriviaPhase(); }, 1600);
+                return;
+            }
+            /* ---- لعبة جديدة ---- */
+            bsClear();
+            questions = parseQuestions(document.getElementById('questions-input').value).concat(bankQuestions());
             originalQuestions = [...questions]; usedQuestions = [];
             ui.setup.classList.add('hidden');
             ui.hud.classList.remove('hidden');
@@ -1857,7 +2055,7 @@
             if(d.type==='questions' && Array.isArray(d.list) && d.list.length){
                 const txt = d.list.map(q=>[q.q, ...(q.options||[])]).flat().filter(Boolean).join('\n');
                 const ta = document.getElementById('questions-input');
-                if(ta && !ta.value.trim()) ta.value = txt;
+                if(ta && !ta.value.trim() && !QBANK.list.length) ta.value = txt; /* لا تعبئة إذا وصل بنك المنهج (تفادي التكرار) */
             }
         });
 

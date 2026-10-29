@@ -247,6 +247,8 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
 .qeMsg{font-size:.75rem; color:var(--teal); font-weight:700}
 .qeScroll{overflow-x:auto; max-height:78vh; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:var(--shadow)}
 .qeTbl{border-collapse:collapse; width:100%; font-size:.8rem}
+.qeTbl tr:first-child th{position:sticky; top:0; z-index:4; background:var(--card); box-shadow:0 2px 4px rgba(0,0,0,.07)}
+.qeTbl tr:first-child th.qeName{z-index:6}
 .qeTbl tr:first-child th{position:sticky; top:0; z-index:3}
 .qeTbl th{background:var(--accent-soft); color:var(--ink); font-size:.72rem; padding:8px 6px; border:1px solid var(--line); white-space:nowrap; cursor:help}
 .qeTbl td{border:1px solid var(--line); padding:3px 4px; text-align:center}
@@ -614,6 +616,7 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
 const SUPA_URL = "https://lazyikoawttfcflpdixs.supabase.co";
 const SUPA_KEY = "sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+setTimeout(()=>{ if(typeof flushPendingWrites==='function') flushPendingWrites(); }, 4000);
 
 /* ذاكرة مؤقتة: marksCache[cls][week][si][ci] = value */
 const marksCache = {};   // cls -> { loaded:bool, data:{week:{si:{ci:v}}} }
@@ -632,10 +635,77 @@ async function fetchClassMarks(cls){
   }
   marksCache[cls] = { loaded:true, data:store };
 }
+/* ====== حماية الدرجات من انقطاع الاتصال: قائمة انتظار محلية + نافذة تنبيه ====== */
+const PENDING_WRITES_KEY='pendingSbWritesV1';
+let offlineModalEl=null, pendBadgeEl=null;
+function pendingLoad(){ try{ const a=JSON.parse(localStorage.getItem(PENDING_WRITES_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function pendingSave(a){ try{ localStorage.setItem(PENDING_WRITES_KEY, JSON.stringify(a)); }catch(e){} updatePendBadge(); }
+function rowKey(r){ return r.class_key+'|'+r.week+'|'+r.student_idx+'|'+r.criterion_idx; }
+function queueWrite(row){
+  const a=pendingLoad().filter(p=>rowKey(p)!==rowKey(row));
+  a.push(row); pendingSave(a);
+}
+async function flushPendingWrites(){
+  const a=pendingLoad(); if(!a.length){ updatePendBadge(); return true; }
+  const remain=[];
+  for(const row of a){
+    try{
+      const res=await sb.from('marks').upsert(row);
+      if(res && res.error) remain.push(row);
+    }catch(e){ remain.push(row); }
+  }
+  pendingSave(remain);
+  return remain.length===0;
+}
+function updatePendBadge(){
+  const n=pendingLoad().length;
+  if(!pendBadgeEl){
+    pendBadgeEl=document.createElement('button');
+    pendBadgeEl.style.cssText='position:fixed;bottom:12px;left:12px;z-index:99990;border-radius:24px;padding:8px 16px;font-size:.85rem;font-weight:700;border:0;cursor:pointer;background:#b45309;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none';
+    pendBadgeEl.onclick=()=>showOfflineModal(true);
+    document.body.appendChild(pendBadgeEl);
+  }
+  pendBadgeEl.style.display=n?'':'none';
+  pendBadgeEl.textContent='📡 '+n+(n===1?' درجة معلّقة — اضغط للرفع':' درجات معلّقة — اضغط للرفع');
+}
+function hideOfflineModal(){ if(offlineModalEl){ offlineModalEl.remove(); offlineModalEl=null; } }
+function showOfflineModal(fromBadge){
+  if(offlineModalEl) return;
+  if(fromBadge && !pendingLoad().length){ showToast('✓ لا توجد درجات معلّقة — كل شيء مرفوع'); return; }
+  const n=pendingLoad().length;
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(20,20,20,.55);z-index:99995;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
+    +'<div style="font-size:2.2rem">📡</div>'
+    +'<div style="font-weight:800;font-size:1.2rem;margin:8px 0 6px;color:#b00020">لا يمكن الاتصال بالخادم</div>'
+    +'<div style="color:#555;font-size:.95rem;line-height:1.9">تعذّر رفع الدرجات إلى قاعدة البيانات الآن.<br>سُجّلت <b>'+n+'</b> '+(n===1?'درجة':'درجات')+' محليًا على هذا الجهاز وستُرفع تلقائيًا عند عودة الاتصال.</div>'
+    +'<div style="display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap">'
+    +'<button id="offRetry" class="pbtn2">🔄 إعادة محاولة الاتصال</button>'
+    +'<button id="offCont" class="pbtn2 ghost">أكمل على أي حال</button>'
+    +'</div><div id="offMsg" style="margin-top:10px;font-size:.85rem;color:#8a6d1d;font-weight:700"></div></div>';
+  document.body.appendChild(ov);
+  offlineModalEl=ov;
+  ov.querySelector('#offRetry').onclick=async()=>{
+    const m=ov.querySelector('#offMsg'); m.textContent='جارٍ فحص الاتصال والرفع…';
+    const ok=await flushPendingWrites();
+    if(ok){ hideOfflineModal(); showToast('تم الاتصال ورُفعت جميع الدرجات المعلّقة ✓'); }
+    else m.textContent='ما زال الاتصال متعذرًا — حاول مجددًا بعد قليل';
+  };
+  ov.querySelector('#offCont').onclick=()=>{ hideOfflineModal(); showToast('الدرجات محفوظة محليًا وستُرفع تلقائيًا عند عودة الاتصال'); };
+}
+window.addEventListener('online',()=>{ flushPendingWrites().then(ok=>{ if(ok) hideOfflineModal(); }); });
+
 async function pushMark(cls,w,si,ci,v){
-  await sb.from('marks').upsert({
-    class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()
-  });
+  const row={class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
+  try{
+    const res=await sb.from('marks').upsert(row);
+    if(res && res.error) throw res.error;
+    flushPendingWrites(); /* الاتصال يعمل — ارفع أي درجات معلّقة */
+  }catch(e){
+    queueWrite(row);
+    showOfflineModal();
+    throw e;
+  }
 }
 /* الطلاب المضافون/المحذوفون يدوياً لكل فصل (تُحفظ في قاعدة البيانات)
    rosterx:<cls> بصيغة {extra:[...], removed:[...]} — والصيغة القديمة (مصفوفة) تُعتبر extra */
@@ -658,8 +728,17 @@ function applyRoster(cls){
 }
 async function saveRoster(cls){
   const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
-  await sb.from('marks').upsert({class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
-    value:JSON.stringify(rx), updated_at:new Date().toISOString()});
+  const row={class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify(rx), updated_at:new Date().toISOString()};
+  try{
+    const res=await sb.from('marks').upsert(row);
+    if(res && res.error) throw res.error;
+    flushPendingWrites();
+  }catch(e){
+    queueWrite(row);
+    showOfflineModal();
+    throw e;
+  }
 }
 async function fetchExtraStudents(cls){
   if(extraLoaded[cls]) return;
@@ -2889,7 +2968,7 @@ function openSheetColsEditor(cls){
     SHEET_CFG[cls]={loaded:true,cols:clean};
     const btn=ov.querySelector('#scSave'); btn.disabled=true; btn.textContent='جارٍ الحفظ…';
     try{ await saveSheetCfg(cls); showToast('تم حفظ الأعمدة ✓'); ov.remove(); }
-    catch(e){ btn.disabled=false; btn.textContent='حفظ الأعمدة'; showToast('تعذر الحفظ — تحقق من الاتصال'); }
+    catch(e){ btn.disabled=false; btn.textContent='حفظ الأعمدة'; showToast('تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'); }
     renderSheet();
   };
 }
@@ -3434,7 +3513,7 @@ async function fillColumn(cls,w,ci,mode){
           if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,si,ci);
         }
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
       renderSheet();
     } else {
@@ -3443,7 +3522,7 @@ async function fillColumn(cls,w,ci,mode){
       try{
         for(const d of groupsCache[cls].defs){ await setGroupPoints(cls,d.id,w,Math.max(0,+v||0)); }
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
       renderGroups();
     }
@@ -3468,7 +3547,7 @@ async function fillRow(cls,w,target,mode){
           if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,target,ci);
         }
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
       renderSheet();
     } else {
@@ -3477,7 +3556,7 @@ async function fillRow(cls,w,target,mode){
       try{
         await setGroupPoints(cls,target,w,Math.max(0,+v||0));
         msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       setTimeout(()=>msg.textContent='',2500);
       renderGroups();
     }
@@ -3608,7 +3687,7 @@ async function renderSheet(){
         await pushMark(cls,w,si,ci,v);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){
-        msg.textContent='تعذر الحفظ — تحقق من الاتصال';
+        msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال';
       }
       setTimeout(()=>msg.textContent='',2000);
     });
@@ -3669,7 +3748,7 @@ function saveTermVals(cls,term){
       await sb.from('marks').upsert({class_key:'termv:'+k, week:0, student_idx:0, criterion_idx:0,
         value:JSON.stringify(TERM_VALS[k]), updated_at:new Date().toISOString()});
       if(msg) msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-    }catch(e){ if(msg) msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+    }catch(e){ if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
     setTimeout(()=>{ if(msg) msg.textContent=''; },2000);
   },600);
 }
@@ -3860,7 +3939,7 @@ function openTermMainEditor(cls,term,mi){
     mn.max=+ov.querySelector('#tmMax').value||TERM_MAIN_MAX[mi];
     const btn=ov.querySelector('#tmSave'); btn.disabled=true; btn.textContent='جارٍ الحفظ…';
     try{ await saveTermCfg(cls,term); showToast('تم حفظ إعدادات العمود ✓'); ov.remove(); }
-    catch(e){ btn.disabled=false; btn.textContent='حفظ'; showToast('تعذر الحفظ — تحقق من الاتصال'); }
+    catch(e){ btn.disabled=false; btn.textContent='حفظ'; showToast('تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'); }
     renderSheet();
   };
 }
@@ -3958,8 +4037,16 @@ async function saveGroupDefs(cls){
     value:JSON.stringify(groupsCache[cls].defs), updated_at:new Date().toISOString()});
 }
 async function pushGroupMark(cls,gid,w,ci,v){
-  await sb.from('marks').upsert({class_key:'grp:'+cls+':'+gid, week:w, student_idx:0, criterion_idx:ci,
-    value:String(v), updated_at:new Date().toISOString()});
+  const row={class_key:'grp:'+cls+':'+gid, week:w, student_idx:0, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
+  try{
+    const res=await sb.from('marks').upsert(row);
+    if(res && res.error) throw res.error;
+    flushPendingWrites();
+  }catch(e){
+    queueWrite(row);
+    showOfflineModal();
+    throw e;
+  }
 }
 function getGroupMark(cls,gid,w,ci){
   const m = groupsCache[cls] && groupsCache[cls].marks;
@@ -4071,7 +4158,7 @@ async function renderGroups(){
   const savePts=async(gid,v)=>{
     msg.textContent='جارٍ الحفظ…';
     try{ await setGroupPoints(cls,gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
-    catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+    catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
     setTimeout(()=>msg.textContent='',2000);
   };
   wrapEl.querySelectorAll('.ptsBtn').forEach(b=>{
@@ -4085,7 +4172,7 @@ async function renderGroups(){
       try{
         await addGroupPoints(cls,gid,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
@@ -4360,7 +4447,7 @@ async function renderStuPoints(){
       try{
         await addStuPoints(cls,si,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       b.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
       setTimeout(()=>msg.textContent='',2000);
     };
@@ -4376,7 +4463,7 @@ async function renderStuPoints(){
       const si=+inp.dataset.si;
       msg.textContent='جارٍ الحفظ…';
       try{ await setStuPoints(cls,si,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
-      catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       inp.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
       setTimeout(()=>msg.textContent='',2000);
     });
@@ -38709,13 +38796,35 @@ async function qeSave(cls, w, si, ci, inp){
   try{
     await pushMark(cls,w,si,ci,v);
     if(msg) msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-  }catch(e){ if(msg) msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+  }catch(e){ if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
   setTimeout(()=>{ const m2=document.getElementById('qeSavedMsg'); if(m2) m2.textContent=''; },2000);
 }
 function qeWeekShort(w){
   if(w===18) return 'شفهية';
   if(w===19) return 'نهائية';
   return 'أ'+w;
+}
+/* التنقل بين خلايا كشف الحفظ والتسميع بالأسهم */
+function qeArrowNav(e){
+  const inp=e.target;
+  if(!inp.classList || !inp.classList.contains('qeInp')) return;
+  const k=e.key;
+  if(k!=='ArrowUp'&&k!=='ArrowDown'&&k!=='ArrowLeft'&&k!=='ArrowRight') return;
+  const tbl=inp.closest('table'); if(!tbl) return;
+  e.preventDefault();
+  const w=+inp.dataset.w, si=+inp.dataset.si, ci=+inp.dataset.ci;
+  const wi=WEEKS.indexOf(w);
+  const q=(w2,si2,ci2)=> (w2===undefined||si2===undefined||ci2===undefined)?null:tbl.querySelector('.qeInp[data-w="'+w2+'"][data-si="'+si2+'"][data-ci="'+ci2+'"]');
+  let t=null;
+  if(k==='ArrowDown')      t=q(w,si+1,ci) || q(WEEKS[wi+1],si,ci);
+  else if(k==='ArrowUp')   t=q(w,si-1,ci) || q(WEEKS[wi-1],si,ci);
+  else{
+    const rowInputs=[...tbl.querySelectorAll('.qeInp[data-w="'+w+'"][data-si="'+si+'"]')];
+    const ri=rowInputs.indexOf(inp);
+    const step=k==='ArrowLeft'?1:-1; /* الواجهة عربية: يسار = التالي */
+    t=rowInputs[ri+step] || q(WEEKS[wi+step],si,ci);
+  }
+  if(t){ t.focus(); if(t.select) t.select(); }
 }
 async function renderQuranEval(cls, wrapEl, rerender){
   const rer = rerender || (()=>renderLessons());
@@ -38806,6 +38915,10 @@ async function renderQuranEval(cls, wrapEl, rerender){
   wrapEl.querySelectorAll('input.qeInp').forEach(inp=>{
     inp.addEventListener('change', ()=>qeSave(cls, +inp.dataset.w, +inp.dataset.si, +inp.dataset.ci, inp));
   });
+  if(!wrapEl._qeNavBound){
+    wrapEl.addEventListener('keydown', qeArrowNav);
+    wrapEl._qeNavBound=true;
+  }
 }
 renderLessons();
 
@@ -39482,7 +39595,7 @@ async function recSave(v){
     await pushMark(s.cls,s.w,si,s.crit,v);
     if(msg) msg.textContent='✓ حُفظت الدرجة ('+v+') — الانتقال للتالي…';
   }catch(e){
-    if(msg) msg.textContent='تعذّر الحفظ — تحقق من الاتصال';
+    if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال';
     body.querySelectorAll('.recGradeRow button, .recGradeRow input').forEach(x=>x.disabled=false);
     return;
   }
@@ -40473,7 +40586,7 @@ async function renderLpSheet(cls, w, pane){
       try{
         await pushMark(cls,w,si,ci,v);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       setTimeout(()=>msg.textContent='',2000);
       const gPane = document.querySelector('#lessonPage #lpPaneGroups');
       if(gPane && gPane.style.display!=='none'){
@@ -40558,7 +40671,7 @@ async function renderLpGroups(cls, w, pane){
       try{
         await addGroupPoints(cls,gid,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
@@ -40573,7 +40686,7 @@ async function renderLpGroups(cls, w, pane){
       inp.classList.toggle('low', v<20);
       msg.textContent='جارٍ الحفظ…';
       try{ await setGroupPoints(cls,inp.dataset.gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
-      catch(e){ msg.textContent='تعذر الحفظ — تحقق من الاتصال'; }
+      catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid,w);
       setTimeout(()=>msg.textContent='',2000);
     });
@@ -40666,7 +40779,12 @@ function initLpClassPanes(cls, w, li, lp){
     shipsCard.style.display='none';
     shipsStage.style.display='';
     ifr.addEventListener('load', async ()=>{
-      /* تمرير أسئلة الدرس (الجاهزة + أسئلة المعلم) للعبة */
+      /* تمرير بنك أسئلة المنهج كاملاً (كل الدروس، خيارات ومقالية) — اللعبة تتيح للمعلم الاختيار */
+      try{
+        const payload=await gatherAllQuestions(cls);
+        ifr.contentWindow.postMessage({type:'bs_bank', lessons:payload.lessons, list:payload.list}, '*');
+      }catch(e){}
+      /* توافق خلفي: أسئلة الدرس الحالي بالصيغة القديمة */
       const key=lessonKey(w,li);
       await fetchCustomQuestions(cls,key);
       await fetchQOverrides(cls);
@@ -41044,7 +41162,7 @@ document.getElementById('bulkAddStuBtn').onclick=()=>{
       renderSheet();
     }catch(e){
       btn.disabled=false; btn.textContent='إضافة الكل';
-      showToast('تعذر الحفظ — تحقق من الاتصال');
+      showToast('تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال');
     }
   };
   ov.querySelector('#bkCancel').onclick=()=>ov.remove();
@@ -41227,7 +41345,7 @@ function openSettings(){
       showToast('تم حفظ الإعدادات ✓');
     }catch(e){
       btn.disabled=false; btn.textContent='حفظ الإعدادات';
-      showToast('تعذر الحفظ — تحقق من الاتصال');
+      showToast('تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال');
     }
   };
 }

@@ -154,6 +154,7 @@
       <button class="gbtn warn" id="jNo">❌ إجابة خاطئة</button>
     </div>
     <div id="qResult"></div>
+    <div class="hint" style="text-align:center;margin-top:8px">⌨️ لوحة الأرقام: 1-9 لاختيار الإجابة • + إجابة صحيحة • - إجابة خاطئة • Enter بدء السؤال / الجولة التالية</div>
   </div>
 </div>
 
@@ -237,6 +238,7 @@ function awardPoints(g){
   }
 }
 function renderScores(){
+  slSave();
   $('scoresList').innerHTML=GROUPS.map(g=>
     `<div class="scoreRow"><span><span class="dot" style="background:#${g.color.toString(16).padStart(6,'0')}"></span>${g.name}</span><span>${g.earned} نقطة</span></div>`).join('');
 }
@@ -381,22 +383,32 @@ function buildBoard(){
 function randPlace(){
   const N=cfg.N, total=N*N;
   holesMap={}; helisMap={};
-  const used=new Set([1,total]);
-  const pick=(min,max)=>{ let s; let guard=0;
-    do{ s=min+Math.floor(Math.random()*(max-min+1)); guard++; }while(used.has(s)&&guard<400);
-    used.add(s); return s; };
-  for(let k=0;k<cfg.holes;k++){
-    const s=pick(Math.max(3,Math.floor(total*.08)), total-1);
+  /* توزيع متساوٍ على الصفوف: كل صف يأخذ نصيبه (الزيادة لصفوف عشوائية)، والمكان داخل الصف عشوائي */
+  const dist=(count,minS,maxS)=>{
+    const order=[...Array(N).keys()];
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    const base=Math.floor(count/N), extra=count%N;
+    const out=[];
+    order.forEach((r,ri)=>{
+      const n=base+(ri<extra?1:0);
+      for(let k=0;k<n;k++){
+        const lo=Math.max(minS, r*N+1), hi=Math.min(maxS, r*N+N);
+        const cand=[];
+        for(let s=lo;s<=hi;s++) if(s!==1 && s!==total && !holesMap[s] && !helisMap[s] && !out.includes(s)) cand.push(s);
+        if(cand.length) out.push(cand[Math.floor(Math.random()*cand.length)]);
+      }
+    });
+    return out;
+  };
+  dist(cfg.holes, Math.max(3,Math.floor(total*.08)), total-1).forEach(s=>{
     const span=Math.min(s-2, Math.max(1,Math.floor(total*.25)));
-    const t=Math.max(1, s-1-Math.floor(Math.random()*span));
-    holesMap[s]=t;
-  }
-  for(let k=0;k<cfg.helis;k++){
-    const s=pick(2, total-Math.max(3,Math.floor(total*.08)));
+    holesMap[s]=Math.max(1, s-1-Math.floor(Math.random()*span));
+  });
+  dist(cfg.helis, 2, total-Math.max(3,Math.floor(total*.08))).forEach(s=>{
     let guard=0,t;
     do{ t=s+1+Math.floor(Math.random()*Math.min(total-s-1,Math.max(1,Math.floor(total*.25)))); guard++; }while(holesMap[t]&&guard<60);
     helisMap[s]=Math.min(total-1,t);
-  }
+  });
 }
 function buildHoles(){
   if(holesGroup) scene.remove(holesGroup);
@@ -473,18 +485,41 @@ function makeCharacter(color){
   const lR=lL.clone(); lR.position.x=.13; lR.name='legR'; g.add(lR);
   return g;
 }
-function placeCharacters(){
+function placeCharacters(keepPos){
   if(charsGroup) scene.remove(charsGroup);
   charsGroup=new THREE.Group(); scene.add(charsGroup);
   const p=sqPos(1);
   GROUPS.forEach((g,i)=>{
-    g.pos=1; g.maxSq=0; g.mesh=makeCharacter(g.color);
-    // اصطفاف حول مربع البداية
-    const a=(i/GROUPS.length)*Math.PI*2;
-    g.mesh.position.set(p.x+Math.cos(a)*.85, .5, p.z+Math.sin(a)*.85);
+    if(!keepPos){ g.pos=1; g.maxSq=0; }
+    g.mesh=makeCharacter(g.color);
+    if(keepPos && g.pos>1){
+      const tp=charStandPos(g,g.pos);
+      g.mesh.position.copy(tp);
+    }else{
+      // اصطفاف حول مربع البداية
+      const a=(i/GROUPS.length)*Math.PI*2;
+      g.mesh.position.set(p.x+Math.cos(a)*.85, .5, p.z+Math.sin(a)*.85);
+    }
     charsGroup.add(g.mesh);
   });
 }
+/* ---------- حفظ تقدم اللعبة محلياً (لاستكمالها في يوم آخر من نفس الأسبوع) ---------- */
+const SL_STATE_KEY=()=> 'sl_state:'+G_CLS+':'+G_W;
+function slSave(){
+  if(!gameStarted) return;
+  try{
+    localStorage.setItem(SL_STATE_KEY(), JSON.stringify({
+      v:1, N:cfg.N, curTurn:curTurn,
+      holesMap:holesMap, helisMap:helisMap,
+      finished:[...finishedGroups],
+      groups:GROUPS.map(g=>({id:g.id, pos:g.pos, maxSq:g.maxSq, earned:g.earned, weekPts:g.weekPts}))
+    }));
+  }catch(e){}
+}
+function slLoad(){
+  try{ return JSON.parse(localStorage.getItem(SL_STATE_KEY())||'null'); }catch(e){ return null; }
+}
+function slClear(){ try{ localStorage.removeItem(SL_STATE_KEY()); }catch(e){} }
 function charStandPos(g, sq){
   const p=sqPos(sq);
   // إزاحة صغيرة حتى لا تتداخل الشخصيات
@@ -550,6 +585,7 @@ function animate(){
 
 /* ================= منطق اللعب ================= */
 function updateTurnUI(){
+  slSave();
   const g=GROUPS[curTurn];
   $('turnName').innerHTML=`<span class="dot" style="background:#${g.color.toString(16).padStart(6,'0')}"></span> دور: ${g.name}`;
   $('turnPos').textContent=`المربع ${g.pos} من ${cfg.N*cfg.N}`;
@@ -788,9 +824,40 @@ $('jNo').onclick=()=>{
 };
 $('askBtn').onclick=showQuestion;
 $('nextBtn').onclick=nextTurn;
+
+/* ---------- التحكم بلوحة الأرقام (Numpad) — كل شيء عدا شاشة الإعدادات ---------- */
+document.addEventListener('keydown',e=>{
+  const c=e.code;
+  if(!/^Numpad/.test(c)) return;
+  if($('setup').style.display!=='none') return;              /* الإعدادات مستثناة */
+  if($('winOverlay').style.display==='flex'){
+    if(c==='NumpadEnter'){ $('winOverlay').style.display='none'; e.preventDefault(); }
+    return;
+  }
+  if($('qPanel').style.display==='block'){
+    if(/^Numpad[1-9]$/.test(c)){
+      const all=[...$('qOpts').querySelectorAll('.qOpt')];
+      const b=all[+c.slice(6)-1];
+      if(b && !b.disabled){ b.click(); e.preventDefault(); }
+    }else if(c==='NumpadAdd'){
+      if($('qJudge').style.display!=='none' && !answered){ $('jYes').click(); e.preventDefault(); }
+    }else if(c==='NumpadSubtract'){
+      if($('qJudge').style.display!=='none' && !answered){ $('jNo').click(); e.preventDefault(); }
+    }else if(c==='NumpadEnter'){
+      if(!$('nextBtn').disabled){ $('nextBtn').click(); e.preventDefault(); }
+    }
+    return;
+  }
+  if(c==='NumpadEnter'){
+    if(!$('askBtn').disabled) $('askBtn').click();
+    else if(!$('nextBtn').disabled) $('nextBtn').click();
+    e.preventDefault();
+  }
+});
 $('newGameBtn').onclick=()=>{
   if(animating) return;
   if(!confirm('لعبة جديدة؟ ستتغير أماكن الحفر والهليكوبترات عشوائياً وتعود المجموعات للبداية (النقاط المكتسبة تبقى محفوظة).')) return;
+  slClear();
   hideQuestion();
   finishedGroups.clear();
   randPlace(); buildHoles(); buildHelis(); placeCharacters();
@@ -822,6 +889,31 @@ $('startBtn').onclick=async ()=>{
   buildPool();
   if(!pool.length){ toast('⚠️ لا توجد أسئلة مطابقة — اختر دروساً فيها أسئلة'); return; }
   $('startBtn').disabled=true; $('startBtn').textContent='جارٍ تجهيز الحديقة…';
+  /* استئناف تقدم محفوظ لنفس الأسبوع وحجم الملعب */
+  const sv=slLoad();
+  const canResume=sv && sv.N===cfg.N && Array.isArray(sv.groups) && sv.groups.length===GROUPS.length
+    && sv.groups.some(g=>g.pos>1 || g.earned>0);
+  if(canResume && confirm('توجد لعبة محفوظة لهذا الأسبوع (نفس حجم الملعب).\nهل تريد استكمالها من حيث توقفت؟\n\n«موافق» = استكمال اللعبة المحفوظة — «إلغاء» = لعبة جديدة من البداية')){
+    holesMap=sv.holesMap||{}; helisMap=sv.helisMap||{};
+    buildBoard(); buildHoles(); buildHelis();
+    sv.groups.forEach(sg=>{
+      const g=GROUPS.find(x=>x.id===sg.id);
+      if(g){ g.pos=sg.pos; g.maxSq=sg.maxSq; g.earned=sg.earned; if(sg.weekPts!==undefined) g.weekPts=sg.weekPts; }
+    });
+    placeCharacters(true);
+    finishedGroups=new Set(sv.finished||[]);
+    curTurn=Math.min(sv.curTurn||0, GROUPS.length-1);
+    if(finishedGroups.has(GROUPS[curTurn].id)) curTurn=GROUPS.findIndex(g=>!finishedGroups.has(g.id));
+    if(curTurn<0) curTurn=0;
+    camTop(true);
+    $('setup').style.display='none';
+    $('hud').style.display='flex';
+    renderScores(); updateTurnUI();
+    gameStarted=true;
+    toast('📂 تم استكمال اللعبة المحفوظة — الدور: '+GROUPS[curTurn].name);
+    return;
+  }
+  slClear();
   randPlace(); buildBoard(); buildHoles(); buildHelis(); placeCharacters();
   camTop(true);
   $('setup').style.display='none';
