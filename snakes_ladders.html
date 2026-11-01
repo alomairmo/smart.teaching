@@ -154,7 +154,7 @@
       <button class="gbtn warn" id="jNo">❌ إجابة خاطئة</button>
     </div>
     <div id="qResult"></div>
-    <div class="hint" style="text-align:center;margin-top:8px">⌨️ لوحة الأرقام: 1-9 لاختيار الإجابة • + إجابة صحيحة • - إجابة خاطئة • Enter بدء السؤال / الجولة التالية</div>
+    <div class="hint" style="text-align:center;margin-top:8px">⌨️ الأرقام (الجانبية أو العلوية): 1-9 لاختيار الإجابة • + إجابة صحيحة • - إجابة خاطئة • Enter بدء السؤال / الجولة التالية</div>
   </div>
 </div>
 
@@ -882,9 +882,14 @@ $('jNo').onclick=()=>{
 $('askBtn').onclick=showQuestion;
 $('nextBtn').onclick=nextTurn;
 
-/* ---------- التحكم بلوحة الأرقام (Numpad) — كل شيء عدا شاشة الإعدادات ---------- */
+/* ---------- التحكم بالأرقام (لوحة الأرقام الجانبية + صف الأرقام العلوي) — كل شيء عدا شاشة الإعدادات ---------- */
 document.addEventListener('keydown',e=>{
-  const c=e.code;
+  let c=e.code;
+  /* توحيد صف الأرقام العلوي مع لوحة الأرقام الجانبية */
+  const dm={Digit0:'Numpad0',Digit1:'Numpad1',Digit2:'Numpad2',Digit3:'Numpad3',Digit4:'Numpad4',
+            Digit5:'Numpad5',Digit6:'Numpad6',Digit7:'Numpad7',Digit8:'Numpad8',Digit9:'Numpad9',
+            Enter:'NumpadEnter',Equal:'NumpadAdd',Minus:'NumpadSubtract'};
+  if(dm[c]) c=dm[c];
   if(!/^Numpad/.test(c)) return;
   if($('setup').style.display!=='none') return;              /* الإعدادات مستثناة */
   if($('winOverlay').style.display==='flex'){

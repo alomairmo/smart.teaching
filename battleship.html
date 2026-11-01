@@ -381,7 +381,7 @@
                     <button id="replay-questions-btn" onclick="replayPreviousQuestions()" disabled>🔄 إعادة الأسئلة
                         السابقة</button>
                     <button id="add-questions-btn-main" onclick="openAddQ()">➕ إضافة أسئلة جديدة</button>
-                    <div class="text-xs text-gray-400 mt-3" style="line-height:1.9">⌨️ لوحة الأرقام: 1-9 لاختيار الإجابة • + صحيحة • - خاطئة<br>8/2/4/6 تحريك أو تصويب • Enter/0 انتقال وإطلاق • . تخطي الحركة</div>
+                    <div class="text-xs text-gray-400 mt-3" style="line-height:1.9">⌨️ الأرقام (الجانبية أو العلوية): 1-9 لاختيار الإجابة • + صحيحة • - خاطئة<br>8/2/4/6 تحريك أو تصويب • Enter/0 انتقال • 5 الانتقال للضرب وإطلاق المدفع • . تخطي الحركة</div>
                 </div>
             </div>
         </div>
@@ -1688,10 +1688,15 @@
         });
 
         // ============================================================
-        //  NUMPAD CONTROL — كل شيء عدا شاشة الإعدادات
+        //  KEYBOARD CONTROL — لوحة الأرقام الجانبية + صف الأرقام العلوي (كل شيء عدا شاشة الإعدادات)
         // ============================================================
         window.addEventListener('keydown', e => {
-            const c = e.code;
+            let c = e.code;
+            /* توحيد صف الأرقام العلوي مع لوحة الأرقام الجانبية */
+            const dm = { Digit0:'Numpad0', Digit1:'Numpad1', Digit2:'Numpad2', Digit3:'Numpad3', Digit4:'Numpad4',
+                         Digit5:'Numpad5', Digit6:'Numpad6', Digit7:'Numpad7', Digit8:'Numpad8', Digit9:'Numpad9',
+                         Enter:'NumpadEnter', Equal:'NumpadAdd', Minus:'NumpadSubtract', Period:'NumpadDecimal' };
+            if (dm[c]) c = dm[c];
             if (!/^Numpad/.test(c)) return;
             if (gameState === 'SETUP') return;
             if (gameState === 'TRIVIA') {
@@ -1710,6 +1715,7 @@
                 const m = { Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0] };
                 if (m[c]) { window.attemptMove(...m[c]); e.preventDefault(); }
                 if (c === 'NumpadEnter' || c === 'Numpad0') { window.proceedToShooting(); e.preventDefault(); }
+                if (c === 'Numpad5') { window.proceedToShooting(); e.preventDefault(); }   /* 5 = الانتقال للضرب */
                 if (c === 'NumpadDecimal' || c === 'NumpadSubtract') { window.skipMovementTurn(); e.preventDefault(); }
             } else if (gameState === 'AIMING') {
                 const s = shipsData[currentPlayerIndex];
@@ -1717,11 +1723,11 @@
                 if (c === 'Numpad6') { aimYaw = (aimYaw - 2); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
                 if (c === 'Numpad8') { aimPitch = Math.min(35, aimPitch + 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
                 if (c === 'Numpad2') { aimPitch = Math.max(-5, aimPitch - 1); updateAimingCamera(); updateAimUI(); if (s.trajectory) updateTrajectoryPreview(); e.preventDefault(); }
-                if (c === 'NumpadEnter' || c === 'Numpad0') {
+                if (c === 'NumpadEnter' || c === 'Numpad0' || c === 'Numpad5') {
                     e.preventDefault(); gameState = 'POWER';
                     document.getElementById('aiming-ui').classList.add('hidden');
                     document.getElementById('power-ui').classList.remove('hidden');
-                    const pInstr = s.trajectory ? 'حدد القوة ⬆️⬇️ ثم [مسافة] 🎯 المسار مرئي ومضاعف!' : 'حدد القوة ⬆️⬇️ ثم [مسافة] للإطلاق!';
+                    const pInstr = s.trajectory ? 'حدد القوة ⬆️⬇️ ثم [5] 🎯 المسار مرئي ومضاعف!' : 'حدد القوة ⬆️⬇️ ثم [5] للإطلاق!';
                     document.getElementById('shooting-instructions').innerText = pInstr;
                     if (s.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); }
                 }
@@ -1730,7 +1736,7 @@
                 const maxPow = cs.trajectory ? 600 : 300;
                 if (c === 'Numpad8') { aimPower = Math.min(maxPow, aimPower + 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
                 if (c === 'Numpad2') { aimPower = Math.max(50, aimPower - 5); updateAimUI(); if (cs.trajectory) { updateTrajectoryPreview(); updateAimingCamera(); } e.preventDefault(); }
-                if (c === 'NumpadEnter' || c === 'Numpad0') { e.preventDefault(); fireCannon(); }
+                if (c === 'NumpadEnter' || c === 'Numpad0' || c === 'Numpad5') { e.preventDefault(); fireCannon(); }
             }
         });
 
