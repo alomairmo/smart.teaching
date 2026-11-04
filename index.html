@@ -501,7 +501,7 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
     </div>
     <div class="err" id="loginErr"></div>
     <div class="okMsg" id="loginOk"></div>
-    <div class="lgNote">جميع الحسابات تشارك نفس بيانات المدرسة (الدرجات والكشوف).</div>
+    <div class="lgNote">كل حساب مستقل: جدوله وتقدم دروسه وفصوله. المحتوى التعليمي وكشوف الطلاب ودرجاتهم مشتركة لنفس الفصل والمادة.</div>
   </div>
 </div>
 <button id="logoutBtn" style="display:none">تسجيل الخروج</button>
@@ -795,14 +795,13 @@ function defaultTeacherSet(){
   return {classes:classes, subjects:[...subs], classSubjects:cs};
 }
 async function fetchTset(){
-  let def;
-  try{ def = defaultTeacherSet(); }catch(e){ def = {classes:[], subjects:[]}; }
   try{
     const r = await sb.from('marks').select('*').eq('class_key','tset:'+CURRENT_USER).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
     if(!r.error && r.data && r.data.length){
       const p = JSON.parse(r.data[0].value);
-      const classes = (p && Array.isArray(p.classes) && p.classes.length) ? p.classes.slice() : def.classes;
-      const subjects = (p && Array.isArray(p.subjects) && p.subjects.length) ? p.subjects.slice() : def.subjects;
+      /* نحترم المصفوفات الفارغة المحفوظة (المعلم أزال فصوله عن قصد) */
+      const classes = (p && Array.isArray(p.classes)) ? p.classes.slice() : [];
+      const subjects = (p && Array.isArray(p.subjects)) ? p.subjects.slice() : [];
       const cs = {};
       classes.forEach(cid=>{
         if(p && p.classSubjects && Array.isArray(p.classSubjects[cid])){
@@ -816,7 +815,8 @@ async function fetchTset(){
       return;
     }
   }catch(e){}
-  TEACHER_SET = def.classes.length ? def : null;
+  /* حساب جديد بلا إعدادات محفوظة: يبدأ فارغًا تمامًا (لا فصول ولا مواد) */
+  TEACHER_SET = { classes: [], subjects: [], classSubjects: {} };
 }
 async function saveTset(){
   await sb.from('marks').upsert({class_key:'tset:'+CURRENT_USER, week:0, student_idx:0, criterion_idx:0,
@@ -839,11 +839,31 @@ async function saveTset(){
   }
   tabIn.onclick=()=>showPane('in');
   tabUp.onclick=()=>showPane('up');
-  function open(){
+  async function open(){
     gate.style.display='none'; wrap.style.display='block'; out.style.display='block';
     const sbBtn=document.getElementById('settingsBtn');
     if(sbBtn) sbBtn.style.display='block';
-    fetchTset().then(()=>{ try{ rebuildTeacherViews(); }catch(e){} });
+    /* التأكد أن الحساب ما زال موجودًا في قائمة الحسابات */
+    try{
+      const a = await fetchAccts();
+      if(!a.users.some(x=>x.u===CURRENT_USER)){
+        localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user');
+        location.reload(); return;
+      }
+    }catch(e){}
+    /* اسم المعلم في الترويسة */
+    try{
+      const sub=document.querySelector('.hdr .sub, header .sub, .sub');
+      if(sub) sub.textContent='المعلم: '+CURRENT_USER+' — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ';
+    }catch(e){}
+    /* تحميل بيانات الحساب: إعداداته وجدوله وتقدم دروسه (لكل حساب بيانات مستقلة) */
+    await fetchTset();
+    try{ await fetchSchedule(); }catch(e){}
+    try{ rebuildTeacherViews(); }catch(e){}
+    try{
+      for(const k of visibleCurKeys()){ await fetchLessonsDone(k); }
+      applyLessonDone();
+    }catch(e){}
   }
   if(localStorage.getItem('teacher_auth')==='1'){
     CURRENT_USER = localStorage.getItem('teacher_user') || 'teacher';
@@ -2905,7 +2925,7 @@ function visibleCurKeys(){
     let cell=null; try{ cell = schedCellFromSel(cid, s); }catch(e){}
     if(cell && cell.cur && (typeof CURRICULA!=='undefined') && CURRICULA[cell.cur] && (typeof ROSTERS!=='undefined') && ROSTERS[cell.cur] && !seen[cell.cur]){ seen[cell.cur]=1; keys.push(cell.cur); }
   }); });
-  return keys.length ? keys : Object.keys(ROSTERS);
+  return keys;
 }
 
 /* ====== أعمدة الكشوف القابلة للتخصيص (لكل منهج) ====== */
@@ -3128,11 +3148,12 @@ function availClassSubjects(cid){
   if(bank && !base.includes(bank)) base.push(bank);
   return base;
 }
-/* مواد الفصل التي اختارها المعلم (أو كل المتاحة افتراضياً) */
+/* مواد الفصل التي اختارها المعلم في حسابه (الحسابات الجديدة: لا شيء) */
 function classSubjectsOf(cid){
   try{
-    const ts = TEACHER_SET || defaultTeacherSet();
-    if(ts && ts.classSubjects && Array.isArray(ts.classSubjects[cid])) return ts.classSubjects[cid];
+    if(TEACHER_SET && TEACHER_SET.classSubjects && typeof TEACHER_SET.classSubjects==='object'){
+      return Array.isArray(TEACHER_SET.classSubjects[cid]) ? TEACHER_SET.classSubjects[cid] : [];
+    }
   }catch(e){}
   return availClassSubjects(cid);
 }
@@ -3173,26 +3194,32 @@ function applyScheduleData(obj){
     }
   }
 }
-/* جلب الجدول المحفوظ من قاعدة البيانات (class_key='sched') وتطبيقه على SCHEDULE */
+/* جلب جدول المعلم الحالي من قاعدة البيانات (class_key='sched:<user>') وتطبيقه */
+function schedKey(){ return 'sched:' + (typeof CURRENT_USER!=='undefined' && CURRENT_USER ? CURRENT_USER : '_anon'); }
 async function fetchSchedule(){
-  const r = await sb.from('marks').select('*').eq('class_key','sched').eq('week',0);
+  if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return;
+  const r = await sb.from('marks').select('*').eq('class_key',schedKey()).eq('week',0);
   if(!r.error && r.data && r.data.length){
     try{
       const obj = JSON.parse(r.data[0].value);
-      if(obj && typeof obj==='object' && !Array.isArray(obj)) applyScheduleData(obj);
+      if(obj && typeof obj==='object' && !Array.isArray(obj)){ applyScheduleData(obj); return; }
     }catch(e){}
   }
+  /* حساب جديد بلا جدول محفوظ: جدول فارغ */
+  applyScheduleData({});
 }
-/* قوائم محرر الجدول من إعدادات المعلم (مع الرجوع للافتراضي) */
+/* قوائم محرر الجدول من إعدادات المعلم (الحسابات الجديدة تبدأ فارغة تماماً) */
 function teacherClasses(){
-  return (TEACHER_SET && Array.isArray(TEACHER_SET.classes) && TEACHER_SET.classes.length)
-    ? TEACHER_SET.classes : Object.keys(SCHED_CLASS_SUBJECTS);
+  if(TEACHER_SET && Array.isArray(TEACHER_SET.classes)) return TEACHER_SET.classes;
+  return Object.keys(SCHED_CLASS_SUBJECTS);
 }
 function teacherSubjects(){
   if(TEACHER_SET && TEACHER_SET.classSubjects){
     const u = new Set();
     Object.values(TEACHER_SET.classSubjects).forEach(a=>{ if(Array.isArray(a)) a.forEach(s=>u.add(s)); });
     if(u.size) return [...u];
+    if(Array.isArray(TEACHER_SET.subjects)) return TEACHER_SET.subjects.slice();
+    return [];
   }
   return (TEACHER_SET && Array.isArray(TEACHER_SET.subjects) && TEACHER_SET.subjects.length)
     ? TEACHER_SET.subjects : defaultTeacherSet().subjects;
@@ -3263,7 +3290,7 @@ function openScheduleEditor(){
       ns[cs.dataset.day][cs.dataset.period]=cell;
     });
     try{
-      await sb.from('marks').upsert({class_key:'sched', week:0, student_idx:0, criterion_idx:0,
+      await sb.from('marks').upsert({class_key:schedKey(), week:0, student_idx:0, criterion_idx:0,
         value:JSON.stringify(ns), updated_at:new Date().toISOString()});
     }catch(e){}
     applyScheduleData(ns);
@@ -3569,6 +3596,10 @@ async function renderSheet(){
   const cls = curSheet;
   const __sv = sheetSel.value;
   const wrapEl = document.getElementById('sheetWrap');
+  if(!cls || !ROSTERS[cls]){
+    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
+    return;
+  }
   if(__sv==='t1' || __sv==='t2'){ renderTermSheet(cls, __sv); return; }
   const w = __sv==='avg' ? 'avg' : +__sv;
   if(!(marksCache[cls] && marksCache[cls].loaded)){
@@ -4096,6 +4127,10 @@ async function renderGroups(){
   const cls = curGroup;
   const w = +groupWeekSel.value;
   const wrapEl = document.getElementById('groupWrap');
+  if(!cls || !ROSTERS[cls]){
+    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
+    return;
+  }
   if(!(groupsCache[cls] && groupsCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل المجموعات من قاعدة البيانات…</div>';
     await fetchGroups(cls);
@@ -4383,6 +4418,10 @@ async function renderStuPoints(){
   const cls = curStuPts;
   const w = +sptsWeekSel.value;
   const wrapEl = document.getElementById('sptsWrap');
+  if(!cls || !ROSTERS[cls]){
+    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
+    return;
+  }
   if(!(sptsCache[cls] && sptsCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل نقاط الطلاب من قاعدة البيانات…</div>';
     await fetchStuPoints(cls);
@@ -4912,19 +4951,24 @@ let curLesson = sheetKeys[0];
 let curLessonSubj = null;
 
 async function fetchLessonsDone(cls){
-  if(lessonsDone[cls]) return;
-  lessonsDone[cls] = new Set();
-  const r = await sb.from('marks').select('*').eq('class_key','lndone:'+cls).eq('week',0);
+  const key = (typeof CURRENT_USER!=='undefined' && CURRENT_USER ? CURRENT_USER : '_anon') + '|' + cls;
+  if(lessonsDone[key]) return;
+  lessonsDone[key] = new Set();
+  if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return;
+  const r = await sb.from('marks').select('*').eq('class_key','lndone:'+CURRENT_USER+':'+cls).eq('week',0);
   if(!r.error && r.data && r.data.length){
-    try{ JSON.parse(r.data[0].value).forEach(k=>lessonsDone[cls].add(k)); }catch(e){}
+    try{ JSON.parse(r.data[0].value).forEach(k=>lessonsDone[key].add(k)); }catch(e){}
   }
 }
 async function saveLessonsDone(cls){
-  await sb.from('marks').upsert({class_key:'lndone:'+cls, week:0, student_idx:0, criterion_idx:0,
-    value:JSON.stringify([...lessonsDone[cls]]), updated_at:new Date().toISOString()});
+  if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return;
+  const key = CURRENT_USER + '|' + cls;
+  await sb.from('marks').upsert({class_key:'lndone:'+CURRENT_USER+':'+cls, week:0, student_idx:0, criterion_idx:0,
+    value:JSON.stringify([...lessonsDone[key]]), updated_at:new Date().toISOString()});
 }
 function lessonKey(w,li){ return w+':'+li; }
-function isLessonDone(cls,w,li){ return lessonsDone[cls] && lessonsDone[cls].has(lessonKey(w,li)); }
+function lndKey(cls){ return (typeof CURRENT_USER!=='undefined' && CURRENT_USER ? CURRENT_USER : '_anon') + '|' + cls; }
+function isLessonDone(cls,w,li){ const s=lessonsDone[lndKey(cls)]; return s && s.has(lessonKey(w,li)); }
 
 /* تطبيق حالة «تم شرحه» على كل أسماء الدروس الظاهرة */
 function applyLessonDone(){
@@ -4939,7 +4983,7 @@ function applyLessonDone(){
 /* هل يوجد درس سابق (في أسبوع أسبق أو نفس الأسبوع قبله) **من نفس المادة** لم يُعلَّم كـ«تم شرحه»؟
    تُقارن المواد عبر lessonSubjectOf؛ المادة الفارغة '' مادة قائمة بذاتها */
 function hasEarlierUndone(cls, w, li){
-  const done = lessonsDone[cls];
+  const done = lessonsDone[lndKey(cls)];
   if(!done) return false;
   const curWd = CURRICULA[cls].weeks.find(wd=>wd.week===w);
   const curText = curWd ? (curWd.lessons||[])[li] : null;
@@ -38693,7 +38737,11 @@ window.addEventListener('load', ()=>{ try{ rebuildTeacherViews(); }catch(e){} })
 async function renderLessons(){
   const cls = curLesson;
   const wrapEl = document.getElementById('lessonWrap');
-  if(!lessonsDone[cls]){
+  if(!cls || !CURRICULA[cls]){
+    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً، وإذا أضفت فصلاً ومادة موجودة سابقاً ستظهر لك نفس المقررات وكشوف الطلاب والدرجات المشتركة.</div>';
+    return;
+  }
+  if(!lessonsDone[lndKey(cls)]){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ التحميل…</div>';
     await fetchLessonsDone(cls);
   }
@@ -38925,8 +38973,8 @@ renderLessons();
 /* زر «تم شرح الدرس» */
 async function toggleLessonDone(cls,w,li){
   await fetchLessonsDone(cls);
-  const k=lessonKey(w,li);
-  if(lessonsDone[cls].has(k)) lessonsDone[cls].delete(k); else lessonsDone[cls].add(k);
+  const k=lessonKey(w,li), kk=lndKey(cls);
+  if(lessonsDone[kk].has(k)) lessonsDone[kk].delete(k); else lessonsDone[kk].add(k);
   await saveLessonsDone(cls);
   applyLessonDone();
   if(document.getElementById('sec-lessons').classList.contains('active')) renderLessons();
@@ -41097,11 +41145,7 @@ document.addEventListener('click', e=>{
   openLessonPage(el.dataset.cls, w, +el.dataset.li);
 });
 
-/* جلب جدول المعلم المحفوظ من قاعدة البيانات وتطبيقه ثم إعادة رسم الجدول */
-(async ()=>{ try{ await fetchSchedule(); }catch(e){} if(typeof renderSchedule==='function') renderSchedule(); })();
-/* تحميل حالة الدروس لكل الفصول في الخلفية */
-(async ()=>{ for(const k of sheetKeys){ await fetchLessonsDone(k); } applyLessonDone(); })();
-/* إعادة رسم جدول المعلم بعد توفر بيانات المواد (BOOKDATA) لعرض مربعات المواد وترتيب الدروس */
+/* رسم الجدول الأولي — جلب جدول المعلم وحالة الدروس يتم بعد تسجيل الدخول (لكل حساب بياناته) */
 if(typeof renderSchedule==='function') renderSchedule();
 
 /* ====== إضافة طالب للكشف ====== */
@@ -41264,6 +41308,7 @@ function openSettings(){
   const ov = openModal(`
     <h3>⚙️ إعداداتي — ${escH(CURRENT_USER||'')}</h3>
     <div class="note">أضف فصولك من القائمة أدناه، ثم تحت كل فصل أضف مواده من قائمته الخاصة. المواد المعلَّمة بـ 📚 لها تحضير كامل (مقطع شرح من عين + صفحات الكتاب + أسئلة + توزيع على الأسابيع).</div>
+    <div class="note" style="margin-top:8px">🔁 <b>المحتوى مشترك:</b> إذا أضفت فصلاً ومادة سبق لمعلم آخر إضافتها، سترى نفس المقرر وكشف الطلاب والدرجات المدخلة لهذا الفصل والمادة كما هي دون أي مسح. أما جدولك الأسبوعي وتقدم دروسك (تم شرحه) وفصولك فهي خاصة بحسابك وحدك. لا يمكن إضافة الفصل نفسه مرتين في الحساب الواحد.</div>
     <div id="setClsCards" style="margin-top:10px"></div>
     <div class="setAddRow">
       <select id="setClsSel">${KNOWN_CLASSES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}</select>
