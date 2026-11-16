@@ -5796,6 +5796,7 @@ async function renderGroups(){
   /* عمود مجموع نقاط الطلاب: يحتاج نقاط الطلاب ودرجاتهم وإعدادات التفعيل */
   if(!(sptsCache[cls] && sptsCache[cls].loaded)) await fetchStuPoints(cls);
   if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   const sptCfg = await fetchSptCfg(cls);
   let dates="";
   const wd = weekData(cls, w);
@@ -5808,9 +5809,10 @@ async function renderGroups(){
     return;
   }
   const grpStuSum = (d)=> d.members.reduce((s,si)=> s + stuWeekTotal(cls,si,w), 0);
-  const cols = ['name','week','stupt','total'];
+  const cols = ['name','week','stupt','wgrand','total'];
   const headers = ['اسم المجموعة','نقاط هذا الأسبوع',
     `مجموع نقاط الطلاب <label class="cfgChk" title="إظهار/إخفاء عمود مجموع نقاط طلاب المجموعة لهذا الأسبوع"><input type="checkbox" class="grpStuPtsChk" ${sptCfg.grpStuPts?'checked':''}> تفعيل</label>`,
+    'المجموع الكلي لهذا الأسبوع',
     'المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(gSortState.col!==null){
@@ -5818,6 +5820,7 @@ async function renderGroups(){
       let va,vb;
       if(gSortState.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*gSortState.dir; }
       if(gSortState.col==='stupt'){ va=grpStuSum(defs[a]); vb=grpStuSum(defs[b]); }
+      else if(gSortState.col==='wgrand'){ va=grpWeekGrand(cls,defs[a].id,w); vb=grpWeekGrand(cls,defs[b].id,w); }
       else if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*gSortState.dir;
@@ -5841,6 +5844,7 @@ async function renderGroups(){
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
       <td class="stuptCell">${sptCfg.grpStuPts ? grpStuSum(d) : '—'}</td>
+      <td class="gcell wgrand">${grpWeekGrand(cls,d.id,w)}</td>
       <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   html += `</table>`;
@@ -5881,11 +5885,13 @@ async function renderGroups(){
       inp.value=nv;
       inp.classList.toggle('low', nv<20);
       b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w) + d;
+      b.closest('tr').querySelector('.wgrand').textContent = grpWeekGrand(cls,gid,w) + d;
       try{
         await addGroupPoints(cls,gid,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
+      b.closest('tr').querySelector('.wgrand').textContent = grpWeekGrand(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
   });
@@ -5899,6 +5905,7 @@ async function renderGroups(){
       inp.classList.toggle('low', v<20);
       await savePts(inp.dataset.gid, v);
       inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid,w);
+      inp.closest('tr').querySelector('.wgrand').textContent = grpWeekGrand(cls,inp.dataset.gid,w);
     });
   });
 }
@@ -6093,11 +6100,9 @@ async function saveSptCfg(cls){
 }
 /* مجموع درجات الطالب في الأسبوع (من كشف الدرجات — كل المعايير) */
 function weekGradesSum(cls, si, w){
-  const st = marksCache[cls] && marksCache[cls].data;
-  const row = st && st[w] && st[w][si];
-  if(!row) return 0;
+  /* نفس منطق عمود «المجموع» في كشف الدرجات تماماً: الخلية غير المدخلة تُحسب بدرجتها الافتراضية و«غ» = 0 */
   let s=0;
-  Object.values(row).forEach(v=>{ const n=parseFloat(v); if(!isNaN(n)) s+=n; });
+  for(let ci=0;ci<colCount(cls);ci++) s+=markNum(getMark(cls,w,si,ci));
   return s;
 }
 /* مجموع نقاط الطالب لهذا الأسبوع = نقاطه + مجموع درجاته (إن كان عمود الدرجات مفعّلاً) */
@@ -6105,6 +6110,16 @@ function stuWeekTotal(cls, si, w){
   const cfg = SPTCFG[cls];
   const g = (cfg && cfg.useGrades) ? weekGradesSum(cls, si, w) : 0;
   return getStuPoints(cls, si, w) + g;
+}
+/* المجموع الكلي للمجموعة هذا الأسبوع = نقاط المجموعة للأسبوع + مجموع درجات أعضائها (إن كان احتساب الدرجات مفعّلاً) */
+function grpWeekGrand(cls, gid, w){
+  const defs=(groupsCache[cls] && groupsCache[cls].defs) || [];
+  const def=defs.find(d=>String(d.id)===String(gid));
+  if(!def) return 0;
+  let s=getGroupPoints(cls,gid,w);
+  const cfg=SPTCFG[cls];
+  if(cfg && cfg.useGrades) s+=def.members.reduce((t,si)=>t+weekGradesSum(cls,si,w),0);
+  return s;
 }
 
 async function setStuPoints(cls,si,w,v){
@@ -6137,6 +6152,7 @@ async function renderSptsTable(cls, w, wrapEl, msg){
   }
   if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
   if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   const cfg = await fetchSptCfg(cls);
   const students = ROSTERS[cls].students;
   const step = sptsStep();
@@ -40613,6 +40629,7 @@ async function renderQuranEval(cls, wrapEl, rerender){
   const rer = rerender || (()=>renderLessons());
   wrapEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
   if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   await fetchExtraStudents(cls);
   if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   const qc = quranCols(cls);
@@ -42390,6 +42407,7 @@ async function renderLpGroups(cls, w, pane){
   }
   if(!(sptsCache[cls] && sptsCache[cls].loaded)) await fetchStuPoints(cls);
   if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   const sptCfg = await fetchSptCfg(cls);
   let dates="";
   const wd = weekData(cls, w);
@@ -42401,9 +42419,10 @@ async function renderLpGroups(cls, w, pane){
     return;
   }
   const grpStuSum = (d)=> d.members.reduce((s,si)=> s + stuWeekTotal(cls,si,w), 0);
-  const cols = ['name','week','stupt','total'];
+  const cols = ['name','week','stupt','wgrand','total'];
   const headers = ['اسم المجموعة','نقاط هذا الأسبوع',
     `مجموع نقاط الطلاب <label class="cfgChk" title="إظهار/إخفاء عمود مجموع نقاط طلاب المجموعة لهذا الأسبوع"><input type="checkbox" class="grpStuPtsChk" ${sptCfg.grpStuPts?'checked':''}> تفعيل</label>`,
+    'المجموع الكلي لهذا الأسبوع',
     'المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(lpGroupSort.col!==null){
@@ -42411,6 +42430,7 @@ async function renderLpGroups(cls, w, pane){
       let va,vb;
       if(lpGroupSort.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*lpGroupSort.dir; }
       if(lpGroupSort.col==='stupt'){ va=grpStuSum(defs[a]); vb=grpStuSum(defs[b]); }
+      else if(lpGroupSort.col==='wgrand'){ va=grpWeekGrand(cls,defs[a].id,w); vb=grpWeekGrand(cls,defs[b].id,w); }
       else if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*lpGroupSort.dir;
@@ -42434,6 +42454,7 @@ async function renderLpGroups(cls, w, pane){
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
       <td class="stuptCell">${sptCfg.grpStuPts ? grpStuSum(d) : '—'}</td>
+      <td class="gcell wgrand">${grpWeekGrand(cls,d.id,w)}</td>
       <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   h += `</table>`;
@@ -42473,6 +42494,7 @@ async function renderLpGroups(cls, w, pane){
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       b.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,gid,w);
+      b.closest('tr').querySelector('.wgrand').textContent = grpWeekGrand(cls,gid,w);
       setTimeout(()=>msg.textContent='',2000);
     };
   });
@@ -42488,6 +42510,7 @@ async function renderLpGroups(cls, w, pane){
       try{ await setGroupPoints(cls,inp.dataset.gid,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
       catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
       inp.closest('tr').querySelector('.total').textContent = groupTotalAll(cls,inp.dataset.gid,w);
+      inp.closest('tr').querySelector('.wgrand').textContent = grpWeekGrand(cls,inp.dataset.gid,w);
       setTimeout(()=>msg.textContent='',2000);
     });
   });
