@@ -209,7 +209,10 @@ td.name .fillBtn:hover{background:var(--teal); color:#fff}
 .shipsOverlay{position:fixed;inset:0;z-index:4000;background:#0b1720}
 .shipsClose{position:absolute;top:10px;right:10px;z-index:4001;background:rgba(220,38,38,.92);color:#fff;border:0;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer;font-family:inherit;font-size:.9rem;box-shadow:0 2px 10px rgba(0,0,0,.5)}
 .ptsCell{white-space:nowrap}
-.ptsBtn{padding:5px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:800;font-size:.95rem;transition:transform .1s ease}
+.ptsBtn{padding:5px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);font-weight:800;font-size:.95rem;transition:transform .1s ease;cursor:pointer}
+.cfgChk{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:600;color:var(--muted);cursor:pointer;vertical-align:middle;margin-inline-start:4px}
+.cfgChk input{cursor:pointer}
+.sheet.gpts td.gcell,.sheet.gpts td.stuptCell{font-weight:800;color:var(--accent)}
 .ptsBtn:active{transform:scale(.92)}
 .ptsBtn.plus{color:#2e7d32;border-color:#a5d6a7}
 .ptsBtn.minus{color:#c62828;border-color:#ef9a9a}
@@ -575,7 +578,7 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
       <span class="saved" id="groupSavedMsg"></span>
     </div>
     <div style="overflow-x:auto" id="groupWrap"></div>
-    <div class="note">نظام نقاط المجموعات: تبدأ كل مجموعة أسبوعها من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>+5</b> و<b>−5</b> (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. يظهر لكل مجموعة مجموع نقاط الأسبوع المحدد و<b>المجموع الكلي من بداية الفصل</b>. اضغط على اسم المجموعة لعرض الأعضاء والقائد وإضافة أو حذف الطلاب. كل طالب ينتمي إلى مجموعة واحدة كحد أقصى.</div>
+    <div class="note">نظام نقاط المجموعات: تبدأ كل مجموعة أسبوعها من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>+5</b> و<b>−5</b> (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. عمود <b>«مجموع نقاط الطلاب»</b> يجمع مجموع نقاط الأسبوع لطلاب المجموعة المضافين فيها (سواء كان عمود درجات الأسبوع مفعّلاً في نقاط الطلاب أم لا)، ويمكن إظهاره أو إخفاؤه من مربع «تفعيل» في رأسه. اضغط على اسم المجموعة لعرض الأعضاء والقائد وإضافة أو حذف الطلاب. كل طالب ينتمي إلى مجموعة واحدة كحد أقصى.</div>
   </section>
 
   <!-- تبويب نقاط الطلاب -->
@@ -593,7 +596,7 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
     </div>
     <div id="sptsQuizBox"></div>
     <div style="overflow-x:auto" id="sptsWrap"></div>
-    <div class="note">نظام نقاط الطلاب: يبدأ كل طالب أسبوعه من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>±</b> بحسب «مقدار الزر» (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. يظهر لكل طالب وسم مجموعته ونقاط الأسبوع المحدد و<b>المجموع الكلي من بداية الفصل</b>. اضغط على عنوان أي عمود للترتيب. زر «🎯 اختيار تلقائي بالأسئلة» يفتح جلسة اختبار داخل هذا التبويب ويمكن أن تُضاف درجة الإجابة تلقائياً إلى نقاط الطالب.</div>
+    <div class="note">نظام نقاط الطلاب: يبدأ كل طالب أسبوعه من <b>20 نقطة</b>، وتزيد وتنقص بأزرار <b>±</b> بحسب «مقدار الزر» (أو بالكتابة مباشرة)، وتُحفظ التغييرات فوراً في قاعدة البيانات السحابية. عمود <b>«مجموع درجات الأسبوع»</b> يجمع درجات الطالب من كشف الدرجات لهذا الأسبوع، ويُفعَّل أو يُلغى من مربع «تفعيل» في رأسه. عمود <b>«مجموع نقاط الأسبوع»</b> = نقاط الطالب + مجموع درجاته إن كان العمود مفعّلاً. اضغط على عنوان أي عمود للترتيب. زر «🎯 اختيار تلقائي بالأسئلة» يفتح جلسة اختبار داخل هذا التبويب ويمكن أن تُضاف درجة الإجابة تلقائياً إلى نقاط الطالب.</div>
   </section>
 
   <!-- تبويب الدروس -->
@@ -4135,6 +4138,10 @@ async function renderGroups(){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل المجموعات من قاعدة البيانات…</div>';
     await fetchGroups(cls);
   }
+  /* عمود مجموع نقاط الطلاب: يحتاج نقاط الطلاب ودرجاتهم وإعدادات التفعيل */
+  if(!(sptsCache[cls] && sptsCache[cls].loaded)) await fetchStuPoints(cls);
+  if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  const sptCfg = await fetchSptCfg(cls);
   let dates="";
   const wd = weekData(cls, w);
   if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
@@ -4145,14 +4152,18 @@ async function renderGroups(){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">لا توجد مجموعات بعد — اضغط «+ إضافة مجموعة» للبدء.</div>';
     return;
   }
-  const cols = ['name','week','total'];
-  const headers = ['اسم المجموعة','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
+  const grpStuSum = (d)=> d.members.reduce((s,si)=> s + stuWeekTotal(cls,si,w), 0);
+  const cols = ['name','week','stupt','total'];
+  const headers = ['اسم المجموعة','نقاط هذا الأسبوع',
+    `مجموع نقاط الطلاب <label class="cfgChk" title="إظهار/إخفاء عمود مجموع نقاط طلاب المجموعة لهذا الأسبوع"><input type="checkbox" class="grpStuPtsChk" ${sptCfg.grpStuPts?'checked':''}> تفعيل</label>`,
+    'المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(gSortState.col!==null){
     order.sort((a,b)=>{
       let va,vb;
       if(gSortState.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*gSortState.dir; }
-      if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
+      if(gSortState.col==='stupt'){ va=grpStuSum(defs[a]); vb=grpStuSum(defs[b]); }
+      else if(gSortState.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*gSortState.dir;
     });
@@ -4174,6 +4185,7 @@ async function renderGroups(){
         <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
+      <td class="stuptCell">${sptCfg.grpStuPts ? grpStuSum(d) : '—'}</td>
       <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   html += `</table>`;
@@ -4186,6 +4198,16 @@ async function renderGroups(){
       renderGroups();
     };
   });
+  /* مربع تفعيل عمود مجموع نقاط الطلاب (دون تفعيل الفرز عند الضغط عليه) */
+  const gchk = wrapEl.querySelector('.grpStuPtsChk');
+  if(gchk){
+    gchk.addEventListener('click', e=>e.stopPropagation());
+    gchk.addEventListener('change', async ()=>{
+      SPTCFG[cls].grpStuPts = gchk.checked;
+      await saveSptCfg(cls);
+      renderGroups();
+    });
+  }
   wrapEl.querySelectorAll('.gnameBtn').forEach(b=>{
     b.onclick=()=>openGroupModal(cls, b.dataset.gid);
   });
@@ -4392,6 +4414,44 @@ function getStuPoints(cls,si,w){
   const wk = m && m[w] ? m[w] : {};
   return wk[si]!==undefined ? wk[si] : 20;
 }
+/* ====== إعدادات نقاط الطلاب لكل فصل: تفعيل عمود درجات الأسبوع وعمود نقاط الطلاب داخل المجموعات ====== */
+/* التخزين: class_key='sptcfg:<cls>' — مشتركة لكل من يدرّس نفس الفصل والمادة */
+const SPTCFG = {};   // cls -> {loaded:bool, useGrades:bool, grpStuPts:bool}
+async function fetchSptCfg(cls){
+  if(SPTCFG[cls] && SPTCFG[cls].loaded) return SPTCFG[cls];
+  const cfg = {loaded:true, useGrades:false, grpStuPts:true};
+  try{
+    const r = await sb.from('marks').select('*').eq('class_key','sptcfg:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    if(!r.error && r.data && r.data.length){
+      const v = JSON.parse(r.data[0].value);
+      if(v){ cfg.useGrades = !!v.useGrades; cfg.grpStuPts = v.grpStuPts!==false; }
+    }
+  }catch(e){}
+  SPTCFG[cls]=cfg; return cfg;
+}
+async function saveSptCfg(cls){
+  const cfg = SPTCFG[cls] || {useGrades:false, grpStuPts:true};
+  try{
+    await sb.from('marks').upsert({class_key:'sptcfg:'+cls, week:0, student_idx:0, criterion_idx:0,
+      value:JSON.stringify({useGrades:!!cfg.useGrades, grpStuPts:cfg.grpStuPts!==false}), updated_at:new Date().toISOString()});
+  }catch(e){}
+}
+/* مجموع درجات الطالب في الأسبوع (من كشف الدرجات — كل المعايير) */
+function weekGradesSum(cls, si, w){
+  const st = marksCache[cls] && marksCache[cls].data;
+  const row = st && st[w] && st[w][si];
+  if(!row) return 0;
+  let s=0;
+  Object.values(row).forEach(v=>{ const n=parseFloat(v); if(!isNaN(n)) s+=n; });
+  return s;
+}
+/* مجموع نقاط الطالب لهذا الأسبوع = نقاطه + مجموع درجاته (إن كان عمود الدرجات مفعّلاً) */
+function stuWeekTotal(cls, si, w){
+  const cfg = SPTCFG[cls];
+  const g = (cfg && cfg.useGrades) ? weekGradesSum(cls, si, w) : 0;
+  return getStuPoints(cls, si, w) + g;
+}
+
 async function setStuPoints(cls,si,w,v){
   const c = sptsCache[cls] || (sptsCache[cls]={loaded:true,marks:{}});
   if(!c.marks[w]) c.marks[w]={};
@@ -4413,34 +4473,28 @@ function stuTotalAll(cls,si,w){
   return s;
 }
 
-/* --- عرض جدول نقاط الطلاب --- */
-async function renderStuPoints(){
-  const cls = curStuPts;
-  const w = +sptsWeekSel.value;
-  const wrapEl = document.getElementById('sptsWrap');
-  if(!cls || !ROSTERS[cls]){
-    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
-    return;
-  }
+/* --- عرض جدول نقاط الطلاب (قابل لإعادة الاستخدام: التبويب الرئيسي وصفحة الدرس) ---
+   ثلاثة أعمدة: نقاط الأسبوع (أزرار ±) + مجموع درجات الأسبوع من الكشف (مع تفعيل) + مجموع نقاط الأسبوع */
+async function renderSptsTable(cls, w, wrapEl, msg){
   if(!(sptsCache[cls] && sptsCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل نقاط الطلاب من قاعدة البيانات…</div>';
     await fetchStuPoints(cls);
   }
   if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
-  let dates="";
-  const wd = weekData(cls, w);
-  if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
-  document.getElementById('sptsWeekDates').textContent = dates;
+  if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  const cfg = await fetchSptCfg(cls);
   const students = ROSTERS[cls].students;
   const step = sptsStep();
-  const cols = ['name','week','total'];
-  const headers = ['اسم الطالب','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
+  const cols = ['name','week','grades','total'];
+  const gradeHdr = `مجموع درجات الأسبوع <label class="cfgChk" title="تفعيل احتساب درجات الأسبوع ضمن مجموع النقاط"><input type="checkbox" class="sptUseGrades" ${cfg.useGrades?'checked':''}> تفعيل</label>`;
+  const headers = ['اسم الطالب','نقاط هذا الأسبوع',gradeHdr,'مجموع نقاط الأسبوع'];
   let order = students.map((_,i)=>i);
   if(sptsSort.col!==null){
     order.sort((a,b)=>{
       let va,vb;
       if(sptsSort.col==='name'){ return students[a].localeCompare(students[b],'ar')*sptsSort.dir; }
-      if(sptsSort.col==='total'){ va=stuTotalAll(cls,a,w); vb=stuTotalAll(cls,b,w); }
+      if(sptsSort.col==='grades'){ va=weekGradesSum(cls,a,w); vb=weekGradesSum(cls,b,w); }
+      else if(sptsSort.col==='total'){ va=stuWeekTotal(cls,a,w); vb=stuWeekTotal(cls,b,w); }
       else { va=getStuPoints(cls,a,w); vb=getStuPoints(cls,b,w); }
       return (va-vb)*sptsSort.dir;
     });
@@ -4463,7 +4517,8 @@ async function renderStuPoints(){
         <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-si="${si}" title="نقاط الطالب هذا الأسبوع">
         <button class="ptsBtn plus" data-si="${si}" data-d="1" title="إضافة ${step} نقاط">+${step}</button>
       </td>
-      <td class="total">${stuTotalAll(cls,si,w)}</td></tr>`;
+      <td class="gcell">${cfg.useGrades ? weekGradesSum(cls,si,w) : '—'}</td>
+      <td class="total">${stuWeekTotal(cls,si,w)}</td></tr>`;
   });
   html += `</table>`;
   wrapEl.innerHTML = html;
@@ -4472,10 +4527,19 @@ async function renderStuPoints(){
     th.onclick=()=>{
       const c=th.dataset.col;
       if(sptsSort.col===c){ sptsSort.dir*=-1; } else { sptsSort={col:c,dir:1}; }
-      renderStuPoints();
+      renderSptsTable(cls, w, wrapEl, msg);
     };
   });
-  const msg=document.getElementById('sptsSavedMsg');
+  /* مربع تفعيل عمود درجات الأسبوع (دون تفعيل الفرز عند الضغط عليه) */
+  const chk = wrapEl.querySelector('.sptUseGrades');
+  if(chk){
+    chk.addEventListener('click', e=>e.stopPropagation());
+    chk.addEventListener('change', async ()=>{
+      SPTCFG[cls].useGrades = chk.checked;
+      await saveSptCfg(cls);
+      renderSptsTable(cls, w, wrapEl, msg);
+    });
+  }
   wrapEl.querySelectorAll('.ptsBtn').forEach(b=>{
     b.onclick=async ()=>{
       const si=+b.dataset.si, d=(+b.dataset.d)*sptsStep(); /* مقدار الزر يُقرأ لحظة الضغط */
@@ -4487,7 +4551,7 @@ async function renderStuPoints(){
         await addStuPoints(cls,si,w,d);
         msg.textContent='تم الحفظ في قاعدة البيانات ✓';
       }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      b.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
+      b.closest('tr').querySelector('.total').textContent = stuWeekTotal(cls,si,w);
       setTimeout(()=>msg.textContent='',2000);
     };
   });
@@ -4503,10 +4567,26 @@ async function renderStuPoints(){
       msg.textContent='جارٍ الحفظ…';
       try{ await setStuPoints(cls,si,w,v); msg.textContent='تم الحفظ في قاعدة البيانات ✓'; }
       catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      inp.closest('tr').querySelector('.total').textContent = stuTotalAll(cls,si,w);
+      inp.closest('tr').querySelector('.total').textContent = stuWeekTotal(cls,si,w);
       setTimeout(()=>msg.textContent='',2000);
     });
   });
+}
+
+/* --- عرض جدول نقاط الطلاب --- */
+async function renderStuPoints(){
+  const cls = curStuPts;
+  const w = +sptsWeekSel.value;
+  const wrapEl = document.getElementById('sptsWrap');
+  if(!cls || !ROSTERS[cls]){
+    wrapEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">لا توجد فصول في حسابك بعد — أضف فصولك وموادك من زر ⚙️ إعداداتي أولاً.</div>';
+    return;
+  }
+  let dates="";
+  const wd = weekData(cls, w);
+  if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
+  document.getElementById('sptsWeekDates').textContent = dates;
+  await renderSptsTable(cls, w, wrapEl, document.getElementById('sptsSavedMsg'));
 }
 renderStuPoints();
 
@@ -40653,6 +40733,9 @@ async function renderLpGroups(cls, w, pane){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل المجموعات من قاعدة البيانات…</div>';
     await fetchGroups(cls);
   }
+  if(!(sptsCache[cls] && sptsCache[cls].loaded)) await fetchStuPoints(cls);
+  if(!(marksCache[cls] && marksCache[cls].loaded)) await fetchClassMarks(cls);
+  const sptCfg = await fetchSptCfg(cls);
   let dates="";
   const wd = weekData(cls, w);
   if(wd) dates=[wd.hijri,wd.gregorian].filter(Boolean).join(" — ");
@@ -40662,14 +40745,18 @@ async function renderLpGroups(cls, w, pane){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">لا توجد مجموعات بعد — اضغط «+ إضافة مجموعة» للبدء.</div>';
     return;
   }
-  const cols = ['name','week','total'];
-  const headers = ['اسم المجموعة','نقاط هذا الأسبوع','المجموع الكلي من بداية الفصل'];
+  const grpStuSum = (d)=> d.members.reduce((s,si)=> s + stuWeekTotal(cls,si,w), 0);
+  const cols = ['name','week','stupt','total'];
+  const headers = ['اسم المجموعة','نقاط هذا الأسبوع',
+    `مجموع نقاط الطلاب <label class="cfgChk" title="إظهار/إخفاء عمود مجموع نقاط طلاب المجموعة لهذا الأسبوع"><input type="checkbox" class="grpStuPtsChk" ${sptCfg.grpStuPts?'checked':''}> تفعيل</label>`,
+    'المجموع الكلي من بداية الفصل'];
   let order = defs.map((_,i)=>i);
   if(lpGroupSort.col!==null){
     order.sort((a,b)=>{
       let va,vb;
       if(lpGroupSort.col==='name'){ return defs[a].name.localeCompare(defs[b].name,'ar')*lpGroupSort.dir; }
-      if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
+      if(lpGroupSort.col==='stupt'){ va=grpStuSum(defs[a]); vb=grpStuSum(defs[b]); }
+      else if(lpGroupSort.col==='total'){ va=groupTotalAll(cls,defs[a].id,w); vb=groupTotalAll(cls,defs[b].id,w); }
       else { va=getGroupPoints(cls,defs[a].id,w); vb=getGroupPoints(cls,defs[b].id,w); }
       return (va-vb)*lpGroupSort.dir;
     });
@@ -40691,6 +40778,7 @@ async function renderLpGroups(cls, w, pane){
         <input type="text" inputmode="numeric" class="ptsInp" value="${pts}" data-gid="${d.id}" title="نقاط المجموعة هذا الأسبوع">
         <button class="ptsBtn plus" data-gid="${d.id}" data-d="5" title="إضافة 5 نقاط">+5</button>
       </td>
+      <td class="stuptCell">${sptCfg.grpStuPts ? grpStuSum(d) : '—'}</td>
       <td class="total">${groupTotalAll(cls,d.id,w)}</td></tr>`;
   });
   h += `</table>`;
@@ -40702,6 +40790,15 @@ async function renderLpGroups(cls, w, pane){
       renderLpGroups(cls,w,pane);
     };
   });
+  const gchk2 = wrapEl.querySelector('.grpStuPtsChk');
+  if(gchk2){
+    gchk2.addEventListener('click', e=>e.stopPropagation());
+    gchk2.addEventListener('change', async ()=>{
+      SPTCFG[cls].grpStuPts = gchk2.checked;
+      await saveSptCfg(cls);
+      renderLpGroups(cls,w,pane);
+    });
+  }
   wrapEl.querySelectorAll('.gnameBtn').forEach(b=>{
     b.onclick=()=>{
       openGroupModal(cls, b.dataset.gid);
@@ -40744,6 +40841,21 @@ async function renderLpGroups(cls, w, pane){
 function initLpClassPanes(cls, w, li, lp){
   const sPane = lp.querySelector('#lpPaneSheet');
   const gPane = lp.querySelector('#lpPaneGroups');
+  const spPane = lp.querySelector('#lpPaneSpts');
+  /* نقاط الطلاب داخل صفحة الدرس — نفس جدول التبويب الرئيسي لفصل الدرس */
+  if(spPane){
+    const spSel = spPane.querySelector('.lpSptsWeekSel');
+    lpFillWeeks(spSel, false);
+    spSel.value = w; /* يفتح على أسبوع الدرس نفسه */
+    const renderLpSpts = async ()=>{
+      const sw = +spSel.value;
+      const wd = weekData(cls, sw);
+      spPane.querySelector('.lpDates').textContent = wd ? [wd.hijri,wd.gregorian].filter(Boolean).join(' — ') : '';
+      await renderSptsTable(cls, sw, spPane.querySelector('.lpWrap'), spPane.querySelector('.lpMsg'));
+    };
+    spSel.addEventListener('change', renderLpSpts);
+    renderLpSpts();
+  }
   /* كشف الطلاب */
   const sSel = sPane.querySelector('.lpWeekSel');
   lpFillWeeks(sSel, true);
@@ -40948,6 +41060,7 @@ function openLessonPage(cls,w,li){
       <button class="tab" data-pane="lpPaneQuiz">اختبر معلوماتك</button>
       ${isQuranL ? '<button class="tab" data-pane="lpPaneQE">تقييم الحفظ والتلاوة</button>' : ''}
       <button class="tab" data-pane="lpPaneSheet">كشف الطلاب</button>
+      <button class="tab" data-pane="lpPaneSpts">⭐ نقاط الطلاب</button>
       <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
       <button class="tab" data-pane="lpPaneShips">🚢 حرب السفن</button>
       <button class="tab" data-pane="lpPaneSnakes">🐍 السلم والثعبان</button>
@@ -41012,6 +41125,16 @@ function openLessonPage(cls,w,li){
       <div style="overflow-x:auto" class="lpWrap"></div>
       <div class="note">يعرض هذا الكشف طلاب ${c.grade} — ${c.subject} فقط. التعديلات تُحفظ فوراً في قاعدة البيانات السحابية وتنعكس تلقائياً على الكشوف الرئيسية.</div>
     </div>
+    <div class="lpPane" id="lpPaneSpts" style="display:none">
+      <div class="controls">
+        <label>الأسبوع:</label>
+        <select class="lpSptsWeekSel"></select>
+        <span class="week-dates lpDates"></span>
+        <span class="saved lpMsg"></span>
+      </div>
+      <div style="overflow-x:auto" class="lpWrap"></div>
+      <div class="note">نقاط طلاب ${c.grade} — ${c.subject} لهذا الأسبوع: تزيد وتنقص بأزرار ±5، وتُحفظ فوراً في قاعدة البيانات وتنعكس تلقائياً على تبويب «نقاط الطلاب» الرئيسي. عمود «مجموع درجات الأسبوع» يُفعَّل من رأس العمود، و«مجموع نقاط الأسبوع» = النقاط + الدرجات إن كانت مفعّلة.</div>
+    </div>
     <div class="lpPane" id="lpPaneGroups" style="display:none">
       <div class="controls">
         <button class="pbtn2 ghost lpAddGrp">+ إضافة مجموعة</button>
@@ -41075,6 +41198,11 @@ function openLessonPage(cls,w,li){
       if(groupsCache[cls]) groupsCache[cls].loaded=false;
       const gPn = lp.querySelector('#lpPaneGroups');
       renderLpGroups(cls, +gPn.querySelector('.lpWeekSel').value, gPn);
+    }
+    /* عند فتح تبويب نقاط الطلاب: تحديثه ليعكس أي تغييرات (من الاختبار التلقائي أو غيره) */
+    if(t.dataset.pane==='lpPaneSpts'){
+      const spPn = lp.querySelector('#lpPaneSpts');
+      if(spPn) spPn.querySelector('.lpSptsWeekSel').dispatchEvent(new Event('change'));
     }
     if(syncState.mode==='full' && !syncState.isRemote) syncSend({k:'tab', pane:t.dataset.pane});
   });
