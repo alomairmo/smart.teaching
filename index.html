@@ -257,6 +257,24 @@ table.sheet tr:first-child th:nth-child(1), table.sheet tr:first-child th:nth-ch
 .qeTbl td{border:1px solid var(--line); padding:3px 4px; text-align:center}
 .qeTbl .qeName{position:sticky; right:0; background:var(--card); text-align:right; font-weight:600; font-size:.78rem; padding:6px 10px; min-width:130px; z-index:2; box-shadow:-2px 0 4px rgba(0,0,0,.05)}
 .qeTbl th.qeName{background:var(--accent-soft); z-index:3}
+/* حاوية تمرير موحّدة للجداول داخل صفحة الدرس لتعمل الخلايا المثبّتة */
+.tblScroll{overflow:auto; max-height:78vh; border-radius:var(--r)}
+/* إبراز صف الطالب وعمود الخلية الجاري تحريرها (بيج مصفرّ للصف ورأس مضيء للعمود) */
+table.sheet tr.hlRow td, table.qeTbl tr.hlRow td{background:#fdf3cf !important}
+table.sheet tr.hlRow td:nth-child(1), table.sheet tr.hlRow td:nth-child(2),
+table.qeTbl tr.hlRow td.qeName{background:#f7e5ae !important}
+table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:#3d2c00 !important; box-shadow:inset 0 0 0 2px #b8860b}
+/* قائمة اختيار الطالب في استمارة التقييم */
+.qeNameBox{position:relative; flex:1; display:flex; gap:6px}
+.qeNameBox input{flex:1}
+.qeNameList{position:absolute; top:calc(100% + 6px); right:0; left:0; max-height:280px; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow-lg); z-index:60; display:flex; flex-direction:column}
+.qeNameItem{border:none; background:none; text-align:right; padding:9px 14px; cursor:pointer; font:inherit; font-size:.9rem}
+.qeNameItem:hover,.qeNameItem.active{background:var(--teal-soft); color:var(--teal)}
+/* رقم الأسبوع القابل للضغط في كشوف التقييم */
+.qeWkLink{cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px}
+.qeWkLink:hover{background:var(--accent) !important; color:#fff !important}
+/* زر حذف عمود في محرر الأعمدة */
+.scDel{padding:6px 10px !important; font-size:.85rem !important}
 .qeTd{min-width:52px}
 .qeCellIn{display:flex; align-items:center; gap:2px; justify-content:center; padding:1px 0}
 .qeTag{font-size:.6rem; font-weight:700; width:12px; color:#fff; border-radius:4px; text-align:center; line-height:1.6}
@@ -4600,8 +4618,37 @@ async function saveSheetCfg(cls){
   await sb.from('marks').upsert({class_key:'sheetcfg:'+cls, week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify({cols:SHEET_CFG[cls].cols}), updated_at:new Date().toISOString()});
 }
+
+/* إعادة ترقيم درجات الفصل بعد حذف عمود: تُنقل درجات الأعمدة التالية خطوة للخلف وتحذف الصفوف الزائدة
+   mapping: oldIdx -> newIdx (أو null للعمود المحذوف). يُستدعى قبل تحديث SHEET_CFG */
+async function remapMarksAfterColDelete(cls, mapping, newCount){
+  const store=marksCache[cls] && marksCache[cls].data;
+  const rows=[];
+  if(store){
+    Object.keys(store).forEach(w=>{
+      Object.keys(store[w]).forEach(si=>{
+        const row=store[w][si]; const nr={};
+        Object.keys(row).forEach(ci=>{
+          const m=mapping[+ci];
+          if(m===undefined || m===null) return; /* عمود محذوف — تُسقط درجاته */
+          if(m!==+ci) rows.push({class_key:cls, week:+w, student_idx:+si, criterion_idx:m, value:String(row[ci]), updated_at:new Date().toISOString()});
+          nr[m]=row[ci];
+        });
+        store[w][si]=nr;
+      });
+    });
+  }
+  for(let i=0;i<rows.length;i+=400){
+    const res=await sb.from('marks').upsert(rows.slice(i,i+400));
+    if(res && res.error) throw res.error;
+  }
+  /* حذف الصفوف التي أصبح رقم معيارها خارج نطاق الأعمدة الجديد (بقايا الترقيم القديم) */
+  const del=await sb.from('marks').delete().eq('class_key',cls).gte('criterion_idx',newCount);
+  if(del && del.error) throw del.error;
+  flushPendingWrites();
+}
 function openSheetColsEditor(cls){
-  const cols = colsOf(cls).map(c=>({n:c.n,max:c.max,def:c.def}));
+  const cols = colsOf(cls).map((c,i)=>({n:c.n,max:c.max,def:c.def,orig:i}));
   const ov = openModal(`
     <h3>⚙️ أعمدة كشف «${ROSTERS[cls].class}»</h3>
     <div class="note">لكل عمود: الاسم ثم القيمة العظمى ثم القيمة الافتراضية (التي تُعبّأ تلقائياً في الخلايا الجديدة). يمكنك إضافة عمود جديد بالزر أسفله.</div>
@@ -4618,7 +4665,21 @@ function openSheetColsEditor(cls){
       <input data-f="n" data-i="${i}" value="${String(c.n).replace(/"/g,'&quot;')}" placeholder="اسم العمود" style="flex:2">
       <input data-f="max" data-i="${i}" value="${c.max}" inputmode="numeric" title="القيمة العظمى" placeholder="العظمى" style="flex:1">
       <input data-f="def" data-i="${i}" value="${c.def}" inputmode="text" title="القيمة الافتراضية" placeholder="الافتراضية" style="flex:1">
+      <button type="button" class="pbtn2 ghost scDel" data-del="${i}" title="حذف هذا العمود نهائياً">🗑</button>
     </div>`).join('');
+    rowsEl.querySelectorAll('.scDel').forEach(b=>{
+      b.onclick=()=>{
+        const i=+b.dataset.del;
+        if(cols.length<=1){ showToast('لا يمكن حذف العمود الوحيد المتبقي'); return; }
+        const c=cols[i];
+        const hasMarks = c.orig!==null && marksCache[cls] && marksCache[cls].data &&
+          Object.values(marksCache[cls].data).some(w=>Object.values(w).some(r=>r[c.orig]!==undefined));
+        const q = hasMarks
+          ? `العمود «${c.n}» يحتوي درجات مدخلة. حذفه سيمحو درجاته نهائياً ويُزيح الأعمدة التي بعده خطوة للخلف مع نقل درجاتها. هل أنت متأكد؟`
+          : `حذف العمود «${c.n}»؟ ستُزاح الأعمدة التي بعده خطوة للخلف مع نقل درجاتها.`;
+        if(window.confirm(q)){ cols.splice(i,1); draw(); }
+      };
+    });
   };
   draw();
   rowsEl.addEventListener('input', e=>{
@@ -4627,18 +4688,32 @@ function openSheetColsEditor(cls){
     if(t.dataset.f==='n') cols[i].n=t.value;
     else { const n=parseFloat(t.value); cols[i][t.dataset.f]=isNaN(n)?t.value:n; }
   });
-  ov.querySelector('#scAdd').onclick=()=>{ cols.push({n:'معيار جديد',max:5,def:5}); draw(); };
+  ov.querySelector('#scAdd').onclick=()=>{ cols.push({n:'معيار جديد',max:5,def:5,orig:null}); draw(); };
   ov.querySelector('#scCancel').onclick=()=>ov.remove();
   ov.querySelector('#scSave').onclick=async ()=>{
-    const clean = cols.filter(c=>String(c.n).trim()).map(c=>({
+    const kept = cols.filter(c=>String(c.n).trim());
+    const clean = kept.map(c=>({
       n:String(c.n).trim(),
       max:+c.max||5,
       def:(String(c.def).trim()==='غ') ? 'غ' : (isNaN(parseFloat(c.def)) ? 5 : parseFloat(c.def))
     }));
     if(!clean.length){ showToast('أضف عموداً واحداً على الأقل'); return; }
-    SHEET_CFG[cls]={loaded:true,cols:clean};
+    const oldCount = colCount(cls);
+    const deleted = kept.some(c=>c.orig===null) ? (kept.filter(c=>c.orig!==null).length < oldCount) : (kept.length < oldCount);
     const btn=ov.querySelector('#scSave'); btn.disabled=true; btn.textContent='جارٍ الحفظ…';
-    try{ await saveSheetCfg(cls); showToast('تم حفظ الأعمدة ✓'); ov.remove(); }
+    try{
+      if(deleted){
+        /* بناء خريطة الترقيم: رقم العمود القديم -> الجديد (null للمحذوف) */
+        const mapping={};
+        for(let oi=0;oi<oldCount;oi++) mapping[oi]=null;
+        kept.forEach((c,ni)=>{ if(c.orig!==null && c.orig!==undefined) mapping[c.orig]=ni; });
+        btn.textContent='جارٍ نقل الدرجات وإعادة ترقيمها…';
+        await remapMarksAfterColDelete(cls, mapping, clean.length);
+      }
+      SHEET_CFG[cls]={loaded:true,cols:clean};
+      await saveSheetCfg(cls);
+      showToast('تم حفظ الأعمدة ✓'); ov.remove();
+    }
     catch(e){ btn.disabled=false; btn.textContent='حفظ الأعمدة'; showToast('تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'); }
     renderSheet();
   };
@@ -5095,6 +5170,9 @@ function markNum(v){ return isAbsent(v) ? 0 : (+v||0); }
 /* لون متدرج: 0 أحمر ← 2.5 كهرماني ← 5 أخضر */
 function markColor(v,mx){
   if(isAbsent(v)) return '';
+  if(+v===5) return 'background:rgba(87,167,115,.45);border-color:rgba(87,167,115,.85);color:#0c3b23;font-weight:700'; // 5 = أخضر
+  if(+v===6) return 'background:linear-gradient(135deg,#ffe9ad,#f2c14e);border-color:#c98f00;color:#4a3500;font-weight:800'; // 6 = ذهبي
+  if(+v===7) return 'background:linear-gradient(135deg,#e3f7fa,#9be3ec);border-color:#4fb3c9;color:#06454f;font-weight:800'; // 7 = ماسي
   mx=+mx||5;
   v=Math.max(0,Math.min(mx,+v||0))*(5/mx);
   const lerp=(a,b,t)=>Math.round(a+(b-a)*t);
@@ -5105,6 +5183,28 @@ function markColor(v,mx){
   // تفتيح الخلفية للقراءة
   return `background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},.45);border-color:rgba(${rgb[0]},${rgb[1]},${rgb[2]},.8)`;
 }
+/* إبراز صف الطالب وعمود الخلية الجاري تحريرها في أي كشف */
+function clearCellHl(){
+  document.querySelectorAll('tr.hlRow').forEach(x=>x.classList.remove('hlRow'));
+  document.querySelectorAll('.hlCol').forEach(x=>x.classList.remove('hlCol'));
+}
+document.addEventListener('focusin', e=>{
+  const t=e.target;
+  if(!(t instanceof HTMLElement) || !t.matches('table.sheet input, table.qeTbl input')) return;
+  clearCellHl();
+  const tr=t.closest('tr'); if(tr) tr.classList.add('hlRow');
+  const td=t.closest('td'); const tbl=t.closest('table');
+  if(td && tbl){
+    const th=tbl.querySelector('tr:first-child th:nth-child('+(td.cellIndex+1)+')');
+    if(th) th.classList.add('hlCol');
+  }
+});
+document.addEventListener('focusout', ()=>{
+  setTimeout(()=>{
+    const a=document.activeElement;
+    if(!(a && a.matches && a.matches('table.sheet input, table.qeTbl input'))) clearCellHl();
+  },0);
+});
 function markClass(v){
   if(isAbsent(v)) return 'absent';
   if(+v===7) return 'g7';
@@ -5182,40 +5282,47 @@ function askFillValue(title, cb){
 }
 
 /* تعميم عمود كامل (معيار واحد على كل الطلاب/المجموعات) */
-async function fillColumn(cls,w,ci,mode){
+async function fillColumn(cls,w,ci,mode,refresh,msgEl){
   askFillValue(`تعميم عمود «${colName(cls,ci)}» — ${weekLabel(w)}`, async (v)=>{
     if(mode==='students'){
       const store=marksCache[cls].data;
       if(!store[w]) store[w]={};
       const n=ROSTERS[cls].students.length;
-      const msg=document.getElementById('savedMsg');
-      msg.textContent='جارٍ التعميم والحفظ…';
+      const msg=msgEl||document.getElementById('savedMsg');
+      const rows=[];
+      for(let si=0;si<n;si++){
+        if(!store[w][si]) store[w][si]={};
+        store[w][si][ci]=v;
+        rows.push({class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()});
+        if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,si,ci);
+      }
+      (refresh||renderSheet)(); /* تحديث فوري للكشف المعروض */
+      if(msg) msg.textContent='جارٍ الحفظ في قاعدة البيانات…';
       try{
-        for(let si=0;si<n;si++){
-          if(!store[w][si]) store[w][si]={};
-          store[w][si][ci]=v;
-          await pushMark(cls,w,si,ci,v);
-          if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,si,ci);
-        }
-        msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
-      renderSheet();
+        const res=await sb.from('marks').upsert(rows);
+        if(res && res.error) throw res.error;
+        flushPendingWrites();
+        if(msg) msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
+      }catch(e){
+        rows.forEach(queueWrite); showOfflineModal();
+        if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال';
+      }
+      setTimeout(()=>{ if(msg) msg.textContent=''; },2500);
     } else {
-      const msg=document.getElementById('groupSavedMsg');
-      msg.textContent='جارٍ التعميم على المجموعات وأعضائها…';
+      const msg=msgEl||document.getElementById('groupSavedMsg');
+      if(msg) msg.textContent='جارٍ التعميم على المجموعات وأعضائها…';
       try{
         for(const d of groupsCache[cls].defs){ await setGroupPoints(cls,d.id,w,Math.max(0,+v||0)); }
-        msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
-      renderGroups();
+        if(msg) msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
+      }catch(e){ if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
+      setTimeout(()=>{ if(msg) msg.textContent=''; },2500);
+      (refresh||renderGroups)();
     }
   });
 }
 
 /* تعميم صف كامل (كل المعايير على طالب/مجموعة واحدة) */
-async function fillRow(cls,w,target,mode){
+async function fillRow(cls,w,target,mode,refresh,msgEl){
   const label = mode==='students' ? ROSTERS[cls].students[target]
               : groupsCache[cls].defs.find(d=>String(d.id)===String(target)).name;
   askFillValue(`تعميم كل معايير «${label}» — ${weekLabel(w)}`, async (v)=>{
@@ -5223,27 +5330,34 @@ async function fillRow(cls,w,target,mode){
       const store=marksCache[cls].data;
       if(!store[w]) store[w]={};
       if(!store[w][target]) store[w][target]={};
-      const msg=document.getElementById('savedMsg');
-      msg.textContent='جارٍ التعميم والحفظ…';
+      const msg=msgEl||document.getElementById('savedMsg');
+      const rows=[];
+      for(let ci=0;ci<colCount(cls);ci++){
+        store[w][target][ci]=v;
+        rows.push({class_key:cls, week:w, student_idx:target, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()});
+        if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,target,ci);
+      }
+      (refresh||renderSheet)(); /* تحديث فوري للكشف المعروض */
+      if(msg) msg.textContent='جارٍ الحفظ في قاعدة البيانات…';
       try{
-        for(let ci=0;ci<colCount(cls);ci++){
-          store[w][target][ci]=v;
-          await pushMark(cls,w,target,ci,v);
-          if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,target,ci);
-        }
-        msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
-      renderSheet();
+        const res=await sb.from('marks').upsert(rows);
+        if(res && res.error) throw res.error;
+        flushPendingWrites();
+        if(msg) msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
+      }catch(e){
+        rows.forEach(queueWrite); showOfflineModal();
+        if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال';
+      }
+      setTimeout(()=>{ if(msg) msg.textContent=''; },2500);
     } else {
-      const msg=document.getElementById('groupSavedMsg');
-      msg.textContent='جارٍ التعميم على المجموعة وأعضائها…';
+      const msg=msgEl||document.getElementById('groupSavedMsg');
+      if(msg) msg.textContent='جارٍ التعميم على المجموعة وأعضائها…';
       try{
         await setGroupPoints(cls,target,w,Math.max(0,+v||0));
-        msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
-      }catch(e){ msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
-      setTimeout(()=>msg.textContent='',2500);
-      renderGroups();
+        if(msg) msg.textContent='تم التعميم والحفظ في قاعدة البيانات ✓';
+      }catch(e){ if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
+      setTimeout(()=>{ if(msg) msg.textContent=''; },2500);
+      (refresh||renderGroups)();
     }
   });
 }
@@ -40582,7 +40696,7 @@ function quranMaqrr(cls, w){
 async function qeSave(cls, w, si, ci, inp){
   let v = inp.value.trim();
   if(v==='غ' || v==='غائب' || v==='g'){ v='غ'; }
-  else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(colMax(cls,ci),n)); }
+  else { let n=parseFloat(v); if(isNaN(n)) n=5; v=Math.max(0,Math.min(7,n)); }
   inp.value=v;
   const store = marksCache[cls].data;
   if(!store[w]) store[w]={};
@@ -40625,6 +40739,21 @@ function qeArrowNav(e){
   }
   if(t){ t.focus(); if(t.select) t.select(); }
 }
+/* فتح درس أسبوع معيّن من داخل كشف التقييم — مع حفظ سياق العودة */
+let LP_BACK = null;
+function qeOpenWeekLesson(cls, w){
+  const wd = weekData(cls, w);
+  if(!wd || !wd.lessons || !wd.lessons.length) return;
+  let li = wd.lessons.findIndex(l=>/^(حفظ|تلاوة|مراجعة)\s*سورة/.test(l));
+  if(li<0) li = wd.lessons.findIndex(l=>/^(حفظ|تلاوة|مراجعة)/.test(l));
+  if(li<0) li = 0;
+  if(window._lpCtx) LP_BACK = {cls:window._lpCtx.cls, w:window._lpCtx.w, li:window._lpCtx.li, pane:'lpPaneQE'};
+  openLessonPage(cls, w, li);
+  /* افتح تبويب الكتاب (الآيات) مباشرة */
+  const lp = document.getElementById('lessonPage');
+  const tab = lp && lp.querySelector('#lpTabs .tab[data-pane="lpPaneBook"]');
+  if(tab) tab.click();
+}
 async function renderQuranEval(cls, wrapEl, rerender){
   const rer = rerender || (()=>renderLessons());
   wrapEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
@@ -40655,7 +40784,7 @@ async function renderQuranEval(cls, wrapEl, rerender){
     const head = '<tr><th class="qeName">اسم الطالب</th>' + WEEKS.map(w=>{
       const mq=quranMaqrr(cls,w);
       const tip=(showH?('الحفظ: '+(mq.hifz||'—')):'')+(showH&&showT?'&#10;':'')+(showT?('التلاوة: '+(mq.tilawa||'—')):'');
-      return `<th class="qeWk" title="${tip.replace(/"/g,'&quot;')}">${qeWeekShort(w)}</th>`;
+      return `<th class="qeWk qeWkLink" data-wkopen="${w}" title="${tip.replace(/"/g,'&quot;')}">${qeWeekShort(w)}</th>`;
     }).join('') + '</tr>';
     const rows = students.map((nm,si)=>{
       const cells = WEEKS.map(w=>{
@@ -40680,7 +40809,7 @@ async function renderQuranEval(cls, wrapEl, rerender){
         const mq=quranMaqrr(cls,w);
         const vh=getMark(cls,w,qeStudent,qc.h), vt=getMark(cls,w,qeStudent,qc.t);
         return `<tr>
-          <td class="qeFW">${qeWeekShort(w)}</td>
+          <td class="qeFW qeWkLink" data-wkopen="${w}" title="الضغط يفتح درس هذا الأسبوع (الآيات)">${qeWeekShort(w)}</td>
           <td class="qeFD">${escH(mq.hijri)}</td>
           <td class="qeFM">${escH(mq.hifz||'—')}</td>
           <td class="qeFG"><input class="qeInp qeFormInp" data-w="${w}" data-si="${qeStudent}" data-ci="${qc.h}" value="${vh}" style="${markColor(vh,colMax(cls,qc.h))}"></td>
@@ -40691,12 +40820,19 @@ async function renderQuranEval(cls, wrapEl, rerender){
     }
     body = `<div class="qePick">
       <label>اختر الطالب:</label>
-      <input id="qeNameInp" list="qeNames" placeholder="اكتب الاسم للبحث والإكمال التلقائي…" value="${escH(nm)}" autocomplete="off">
-      <datalist id="qeNames">${opts}</datalist>
+      <button class="pbtn2 ghost" id="qePrev" title="الطالب السابق" ${qeStudent<=0?'disabled':''}>‹ السابق</button>
+      <div class="qeNameBox">
+        <input id="qeNameInp" placeholder="اكتب الاسم للبحث…" value="${escH(nm)}" autocomplete="off">
+        <button class="pbtn2" id="qeListBtn" title="عرض قائمة الطلاب كاملة">▼</button>
+        <div class="qeNameList" id="qeNameList" style="display:none">
+          ${students.map((s2,i2)=>`<button type="button" class="qeNameItem${i2===qeStudent?' active':''}" data-i="${i2}">${escH(s2)}</button>`).join('')}
+        </div>
+      </div>
+      <button class="pbtn2 ghost" id="qeNext" title="الطالب التالي" ${qeStudent>=students.length-1?'disabled':''}>التالي ›</button>
     </div>
     ${nm?`<div class="qeFormHead">استمارة متابعة حفظ وتلاوة القرآن الكريم — ${escH(ROSTERS[cls].class)}<br>الطالب: <b>${escH(nm)}</b></div>
     <div class="qeScroll"><table class="qeTbl qeFormTbl">
-      <tr><th>الأسبوع</th><th>التاريخ (هـ)</th><th>مقرر الحفظ</th><th>الدرجة (من ${colMax(cls,qc.h)})</th><th>مقرر التلاوة</th><th>الدرجة (من ${colMax(cls,qc.t)})</th></tr>
+      <tr><th>الأسبوع</th><th>التاريخ (هـ)</th><th>مقرر الحفظ</th><th>الدرجة (من 7)</th><th>مقرر التلاوة</th><th>الدرجة (من 7)</th></tr>
       ${rows}</table></div>`:'<div class="ddEmpty">لا يوجد طلاب في هذا الفصل بعد.</div>'}`;
   }
 
@@ -40706,14 +40842,51 @@ async function renderQuranEval(cls, wrapEl, rerender){
   wrapEl.querySelector('#qeModeForm').onclick=()=>{ qeMode='form'; rer(); };
   wrapEl.querySelectorAll('[data-qeshow]').forEach(b=>{ b.onclick=()=>{ qeShow=b.dataset.qeshow; rer(); }; });
   const nameInp = wrapEl.querySelector('#qeNameInp');
+  const nameList = wrapEl.querySelector('#qeNameList');
+  const listBtn = wrapEl.querySelector('#qeListBtn');
   if(nameInp){
     nameInp.addEventListener('change', ()=>{
       const i = students.indexOf(nameInp.value.trim());
       if(i>=0){ qeStudent=i; rer(); }
     });
+    /* البحث يصفّي عناصر القائمة ويُظهرها */
+    nameInp.addEventListener('input', ()=>{
+      if(!nameList) return;
+      const q=nameInp.value.trim();
+      nameList.style.display='';
+      nameList.querySelectorAll('.qeNameItem').forEach(it=>{
+        it.style.display = (!q || it.textContent.includes(q)) ? '' : 'none';
+      });
+    });
+    nameInp.addEventListener('focus', ()=>{ if(nameList) nameList.style.display=''; });
   }
+  if(listBtn && nameList){
+    listBtn.onclick=(e)=>{
+      e.stopPropagation();
+      nameList.style.display = nameList.style.display==='none' ? '' : 'none';
+    };
+    nameList.querySelectorAll('.qeNameItem').forEach(it=>{
+      it.onclick=()=>{ qeStudent=+it.dataset.i; rer(); };
+    });
+    /* إغلاق القائمة عند الضغط خارجها */
+    if(!wrapEl._qeListBound){
+      wrapEl._qeListBound=true;
+      document.addEventListener('click', e=>{
+        if(!e.target.closest || !e.target.closest('.qeNameBox')){
+          document.querySelectorAll('.qeNameList').forEach(l=>l.style.display='none');
+        }
+      });
+    }
+  }
+  const pv=wrapEl.querySelector('#qePrev'), nx=wrapEl.querySelector('#qeNext');
+  if(pv) pv.onclick=()=>{ if(qeStudent>0){ qeStudent--; rer(); } };
+  if(nx) nx.onclick=()=>{ if(qeStudent<students.length-1){ qeStudent++; rer(); } };
   wrapEl.querySelectorAll('input.qeInp').forEach(inp=>{
     inp.addEventListener('change', ()=>qeSave(cls, +inp.dataset.w, +inp.dataset.si, +inp.dataset.ci, inp));
+  });
+  /* الضغط على رقم الأسبوع يفتح درسه (صفحة الآيات) مع إمكانية الرجوع للكشف */
+  wrapEl.querySelectorAll('[data-wkopen]').forEach(el=>{
+    el.addEventListener('click', ()=>qeOpenWeekLesson(cls, +el.dataset.wkopen));
   });
   if(!wrapEl._qeNavBound){
     wrapEl.addEventListener('keydown', qeArrowNav);
@@ -42350,7 +42523,7 @@ async function renderLpSheet(cls, w, pane){
     h += `<td class="total">${tot}</td></tr>`;
   });
   h += `</table>`;
-  wrapEl.innerHTML = h;
+  wrapEl.innerHTML = `<div class="tblScroll">` + h + `</div>`;
   wrapEl.querySelectorAll('th[data-col]').forEach(th=>{
     th.onclick=()=>{
       const c=th.dataset.col;
@@ -42360,10 +42533,10 @@ async function renderLpSheet(cls, w, pane){
   });
   if(w!=='avg'){
     wrapEl.querySelectorAll('[data-fillcol]').forEach(b=>{
-      b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'students'); };
+      b.onclick=(e)=>{ e.stopPropagation(); fillColumn(cls,w,+b.dataset.fillcol,'students', ()=>renderLpSheet(cls,w,pane), msg); };
     });
     wrapEl.querySelectorAll('[data-fillrow]').forEach(b=>{
-      b.onclick=()=>{ fillRow(cls,w,+b.dataset.fillrow,'students'); };
+      b.onclick=()=>{ fillRow(cls,w,+b.dataset.fillrow,'students', ()=>renderLpSheet(cls,w,pane), msg); };
     });
     enableArrowNav(wrapEl);
   }
@@ -42708,6 +42881,7 @@ function initLpClassPanes(cls, w, li, lp){
 function openLessonPage(cls,w,li){
   const wd = weekData(cls,w);
   if(!wd || !wd.lessons || !wd.lessons[li]) return;
+  window._lpCtx = {cls:cls, w:w, li:li};
   const l = wd.lessons[li];
   const c = CURRICULA[cls];
   const lp = document.getElementById('lessonPage');
@@ -42863,7 +43037,18 @@ function openLessonPage(cls,w,li){
   document.body.style.overflow='hidden';
   syncStop();
   syncState._lesson = [cls,w,li];
-  lp.querySelector('#lpBack').onclick=()=>{ syncStop(); lp.style.display='none'; lp.innerHTML=''; document.body.style.overflow=''; };
+  lp.querySelector('#lpBack').onclick=()=>{
+    syncStop();
+    const back = LP_BACK; LP_BACK = null;
+    if(back){
+      openLessonPage(back.cls, back.w, back.li);
+      const lp2 = document.getElementById('lessonPage');
+      const tab = lp2 && lp2.querySelector('#lpTabs .tab[data-pane="'+back.pane+'"]');
+      if(tab) tab.click();
+    } else {
+      lp.style.display='none'; lp.innerHTML=''; document.body.style.overflow='';
+    }
+  };
   lp.querySelector('#lpDone').onclick=()=>toggleLessonDone(cls,w,+li);
   lp.querySelectorAll('#lpTabs .tab').forEach(t=>t.onclick=()=>{
     lp.querySelectorAll('#lpTabs .tab').forEach(x=>x.classList.remove('active'));
