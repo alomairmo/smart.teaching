@@ -3,19 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>جدول المعلم وتوزيع المناهج والكشوف — محمد صالح العمير الأسمري</title>
+<title>إدارة الصف الذكية - نمذجة التعلم</title>
+<link rel="icon" href="logo.webp" type="image/webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rakkas&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#33302a; --muted:#8a7f6d; --line:#e9dfc9;
-  --bg:#f6f1e6; --card:#fffdf7; --accent:#a67a2e; --accent-2:#c9a227; --accent-soft:#f7efdc;
-  --teal:#2f6f66; --teal-deep:#23564f; --teal-soft:#e6f0ec;
-  --gold-soft:#f4e6bf; --shadow:0 2px 6px rgba(90,70,30,.08),0 10px 24px rgba(90,70,30,.08);
-  --shadow-lg:0 4px 10px rgba(90,70,30,.10),0 22px 44px rgba(90,70,30,.14);
+  /* هوية منصة نمذجة التعلّم البصرية */
+  --navy-950:#123f3e; --navy-900:#174f4d;
+  --ink:#253d37; --muted:#687166; --line:#d9cdab;
+  --bg:#f8f0dc; --card:#fffaf0; --accent:#9b691c; --accent-2:#d39a32; --accent-soft:#efe3c6;
+  --teal:#27736d; --teal-deep:#155b58; --teal-soft:#d8e2ce;
+  --gold-soft:#f2dfac; --shadow:0 2px 6px rgba(18,63,62,.08),0 10px 24px rgba(18,63,62,.08);
+  --shadow-lg:0 4px 10px rgba(18,63,62,.10),0 22px 44px rgba(18,63,62,.15);
   --r:16px;
 }
 *{box-sizing:border-box; margin:0; padding:0}
 html{scroll-behavior:smooth}
-body{font-family:"Segoe UI", Tahoma, "Noto Kufi Arabic", Arial, sans-serif; background:var(--bg); color:var(--ink); line-height:1.7;
+body{font-family:"Tajawal","Segoe UI",Tahoma,Arial,sans-serif; background:var(--bg); color:var(--ink); line-height:1.7;
   background-image:radial-gradient(circle at 85% 10%,rgba(201,162,39,.07),transparent 45%),radial-gradient(circle at 10% 90%,rgba(47,111,102,.07),transparent 45%)}
 
 /* خلفية زخرفية عائمة */
@@ -32,15 +38,20 @@ body{font-family:"Segoe UI", Tahoma, "Noto Kufi Arabic", Arial, sans-serif; back
 .wrap{max-width:none; margin:0 auto; padding:24px 28px 60px; position:relative; z-index:1}
 
 /* ترويسة البطل */
-header.top{margin-bottom:22px; position:relative; overflow:hidden; border-radius:22px; padding:34px 26px 30px;
-  background:linear-gradient(135deg,#2f6f66 0%,#3d8273 45%,#a67a2e 130%);
+header.top{margin-bottom:22px; position:relative; overflow:hidden; border-radius:22px; padding:30px 26px 24px;
+  background:linear-gradient(135deg,#123f3e 0%,#174f4d 45%,#27736d 90%,#9b691c 150%);
   color:#fff; box-shadow:var(--shadow-lg); border:1px solid rgba(255,255,255,.25);
   transition:transform .35s ease, box-shadow .35s ease}
 header.top:hover{transform:translateY(-3px); box-shadow:0 6px 14px rgba(47,111,102,.18),0 30px 55px rgba(47,111,102,.22)}
 header.top::before{content:""; position:absolute; inset:0; opacity:.14; pointer-events:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1.2'%3E%3Cpath d='M36 6l8 14 16 2-11 12 3 16-16-7-16 7 3-16L12 22l16-2z'/%3E%3Ccircle cx='36' cy='36' r='4'/%3E%3C/g%3E%3C/svg%3E")}
 header.top::after{content:"🕌"; position:absolute; left:22px; bottom:8px; font-size:3.4rem; opacity:.25; pointer-events:none; animation:floaty 8s ease-in-out infinite}
-h1{font-size:1.55rem; color:#fff; position:relative; text-shadow:0 2px 8px rgba(0,0,0,.25); margin-bottom:4px}
+h1{font-size:1.6rem; color:#fff; position:relative; text-shadow:0 2px 8px rgba(0,0,0,.25); margin-bottom:4px; font-family:"Rakkas","Amiri",serif; font-weight:400; letter-spacing:.3px}
+.brandRow{display:flex; align-items:center; gap:16px; position:relative}
+.brandLogo{width:76px; height:76px; object-fit:contain; filter:drop-shadow(0 3px 8px rgba(0,0,0,.3)); background:rgba(255,250,240,.94); border-radius:18px; padding:5px; border:1px solid rgba(211,154,50,.5)}
+.brandTxt{flex:1; min-width:0}
+.brandLink{display:inline-block; margin-top:10px; position:relative; color:#f2dfac; font-size:.82rem; font-weight:700; text-decoration:none; border:1px solid rgba(242,223,172,.45); border-radius:999px; padding:4px 16px; background:rgba(255,250,240,.08); transition:all .25s ease}
+.brandLink:hover{background:rgba(255,250,240,.2); color:#fff}
 .sub{color:#f3ead2; font-size:.9rem; position:relative; opacity:.95}
 
 /* التبويبات الرئيسية */
@@ -121,11 +132,16 @@ table.sheet tr:nth-child(even) td{background:#fbf8f0}
 .saved{font-size:.78rem; color:var(--teal); margin-right:auto; font-weight:700}
 
 /* صفحة الدخول */
-#loginGate{position:fixed; inset:0; background:linear-gradient(160deg,#f6f1e7,#e9dfc9); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;
+#loginGate{position:fixed; inset:0; background:linear-gradient(160deg,#f8f0dc,#efe3c6); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;
   background-image:radial-gradient(circle at 20% 20%,rgba(201,162,39,.15),transparent 50%),radial-gradient(circle at 80% 80%,rgba(47,111,102,.15),transparent 50%)}
 #loginGate .card{background:var(--card); border:1px solid var(--line); border-radius:24px; padding:38px 32px; width:100%; max-width:380px; box-shadow:var(--shadow-lg),0 1px 0 rgba(255,255,255,.8) inset; text-align:center; position:relative; overflow:hidden; animation:fadeUp .5s ease}
 #loginGate .card::before{content:""; position:absolute; top:0; right:0; left:0; height:6px; background:linear-gradient(90deg,var(--teal),var(--accent-2),var(--teal))}
-#loginGate h2{color:var(--accent); margin-bottom:4px; font-size:1.35rem}
+#loginGate h2{color:var(--navy-950); margin-bottom:2px; font-size:1.5rem; font-family:"Rakkas","Amiri",serif; font-weight:400}
+#loginGate .lgLogo{width:92px; height:92px; object-fit:contain; margin-bottom:8px; filter:drop-shadow(0 3px 8px rgba(18,63,62,.2))}
+#loginGate .lgBrand{font-size:.78rem; color:var(--accent); font-weight:800; margin-bottom:14px}
+#loginGate .lgSiteLink{display:inline-block; margin-top:12px; font-size:.78rem; color:var(--teal-deep); font-weight:700}
+#loginGate .lgDivider{border:none; border-top:1px dashed var(--line); margin:14px 0 10px}
+#loginGate .lgMini{font-size:.72rem; color:var(--muted); margin:6px 0 4px; font-weight:700}
 #loginGate h2::before{display:none}
 #loginGate p{color:var(--muted); font-size:.85rem; margin-bottom:18px}
 #loginGate input{width:100%; font:inherit; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-bottom:12px; text-align:center; background:#fff; transition:all .2s ease}
@@ -503,18 +519,25 @@ table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:
 <div class="bgDeco" aria-hidden="true"><span>📖</span><span>⭐</span><span>🕌</span><span>🎯</span><span>✏️</span><span>🌙</span></div>
 <div id="loginGate">
   <div class="card">
-    <h2>🕌 صفحة المعلم</h2>
-    <p>صفحة المعلم محمد صالح العمير الأسمري</p>
+    <img src="logo.webp" alt="شعار منصة نمذجة التعلّم" class="lgLogo">
+    <h2>إدارة الصف الذكية</h2>
+    <div class="lgBrand">من أدوات منصة نمذجة التعلّم — نحو تعلّم نموذجي ✦</div>
     <div class="lgTabs">
-      <button id="lgTabIn" class="active">تسجيل دخول</button>
-      <button id="lgTabUp">تسجيل جديد</button>
+      <button id="lgTabIn" class="active">حساب نمذجة</button>
+      <button id="lgTabUp">حساب الأداة</button>
     </div>
     <div id="lgPaneIn">
+      <input type="email" id="nemail" placeholder="البريد الإلكتروني في منصة نمذجة" autocomplete="username" dir="ltr" style="text-align:right">
+      <input type="password" id="npwd" placeholder="كلمة المرور" autocomplete="current-password">
+      <button id="nloginBtn">دخول بحساب نمذجة</button>
+      <div class="lgMini">نفس بيانات دخولك في <a href="https://www.namthaja.app/" target="_blank" rel="noopener">www.namthaja.app</a> — وإن كنت مسجلاً دخولك في المنصة ستدخل تلقائياً</div>
+    </div>
+    <div id="lgPaneUp" style="display:none">
       <input type="text" id="luser" placeholder="اسم المستخدم" autocomplete="username">
       <input type="password" id="pwd" placeholder="كلمة المرور" autocomplete="current-password">
       <button id="loginBtn">دخول</button>
-    </div>
-    <div id="lgPaneUp" style="display:none">
+      <hr class="lgDivider">
+      <div class="lgMini">تسجيل حساب أداة جديد:</div>
       <input type="text" id="ruser" placeholder="اسم المستخدم" autocomplete="username">
       <input type="password" id="rpwd" placeholder="كلمة المرور (4 أحرف فأكثر)" autocomplete="new-password">
       <input type="password" id="rpwd2" placeholder="تأكيد كلمة المرور" autocomplete="new-password">
@@ -523,6 +546,7 @@ table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:
     <div class="err" id="loginErr"></div>
     <div class="okMsg" id="loginOk"></div>
     <div class="lgNote">كل حساب مستقل: جدوله وتقدم دروسه وفصوله. المحتوى التعليمي وكشوف الطلاب ودرجاتهم مشتركة لنفس الفصل والمادة.</div>
+    <a class="lgSiteLink" href="https://www.namthaja.app/" target="_blank" rel="noopener">✦ منصة نمذجة التعلّم — www.namthaja.app</a>
   </div>
 </div>
 <button id="logoutBtn" style="display:none">تسجيل الخروج</button>
@@ -530,8 +554,14 @@ table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:
 <div class="wrap" id="mainWrap" style="display:none">
   <header class="top">
     <button id="settingsBtn" style="display:none">⚙️ إعداداتي</button>
-    <h1>🕌 جدول المعلم وتوزيع المناهج والكشوف الأسبوعية 📖</h1>
-    <div class="sub">المعلم: محمد صالح العمير الأسمري — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ</div>
+    <div class="brandRow">
+      <img src="logo.webp" alt="شعار منصة نمذجة التعلّم" class="brandLogo">
+      <div class="brandTxt">
+        <h1>إدارة الصف الذكية - نمذجة التعلم</h1>
+        <div class="sub">المعلم: محمد صالح العمير الأسمري — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ</div>
+      </div>
+    </div>
+    <a class="brandLink" href="https://www.namthaja.app/" target="_blank" rel="noopener">✦ من أدوات منصة نمذجة التعلّم — www.namthaja.app</a>
   </header>
 
   <div class="maintabs">
@@ -637,6 +667,18 @@ table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:
 const SUPA_URL = "https://lazyikoawttfcflpdixs.supabase.co";
 const SUPA_KEY = "sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+/* ====== الدخول الموحّد مع منصة نمذجة التعلّم (نفس جلسة الموقع الرئيسي) ====== */
+const NMT_URL = 'https://xpcejnkeljgxgvrviqcb.supabase.co';
+const NMT_KEY = 'sb_publishable_UKWqPe5qU97T8-JM5D7hpg_4pU0gjbu';
+const nmt = supabase.createClient(NMT_URL, NMT_KEY);
+/* ربط حسابات المنصة بحسابات الأداة: «M Omair» يستخدم كل بيانات حساب «محمد صالح» */
+const NAMTHAJA_ALIAS = {
+  'm omair': 'محمد صالح',
+  'm.omair': 'محمد صالح',
+  'momair': 'محمد صالح'
+};
+var SSO_MODE = false;   // دخل عبر حساب نمذجة
+var SSO_NAME = null;    // الاسم الظاهر في المنصة
 setTimeout(()=>{ if(typeof flushPendingWrites==='function') flushPendingWrites(); }, 4000);
 
 /* ذاكرة مؤقتة: marksCache[cls][week][si][ci] = value */
@@ -864,8 +906,8 @@ async function saveTset(){
     gate.style.display='none'; wrap.style.display='block'; out.style.display='block';
     const sbBtn=document.getElementById('settingsBtn');
     if(sbBtn) sbBtn.style.display='block';
-    /* التأكد أن الحساب ما زال موجودًا في قائمة الحسابات */
-    try{
+    /* التأكد أن الحساب ما زال موجودًا في قائمة الحسابات (حسابات الأداة فقط — دخول نمذجة موثوق من المنصة) */
+    if(!SSO_MODE) try{
       const a = await fetchAccts();
       if(!a.users.some(x=>x.u===CURRENT_USER)){
         localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user');
@@ -875,7 +917,8 @@ async function saveTset(){
     /* اسم المعلم في الترويسة */
     try{
       const sub=document.querySelector('.hdr .sub, header .sub, .sub');
-      if(sub) sub.textContent='المعلم: '+CURRENT_USER+' — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ';
+      const dispName = (SSO_MODE && SSO_NAME) ? (SSO_NAME+' ('+CURRENT_USER+')') : CURRENT_USER;
+      if(sub) sub.textContent='المعلم: '+dispName+' — مدرسة العماير الابتدائية والمتوسطة والثانوية — الفصل الدراسي الأول 1448هـ';
     }catch(e){}
     /* تحميل بيانات الحساب: إعداداته وجدوله وتقدم دروسه (لكل حساب بيانات مستقلة) */
     await fetchTset();
@@ -886,10 +929,67 @@ async function saveTset(){
       applyLessonDone();
     }catch(e){}
   }
-  if(localStorage.getItem('teacher_auth')==='1'){
+  /* دخول تلقائي: 1) جلسة نمذجة محفوظة 2) جلسة الموقع الحية 3) حساب الأداة */
+  if(localStorage.getItem('namthaja_sso')==='1'){
+    SSO_MODE=true; SSO_NAME=localStorage.getItem('namthaja_name')||null;
     CURRENT_USER = localStorage.getItem('teacher_user') || 'teacher';
     open();
+    /* تحقق صامت أن جلسة المنصة ما تزال حية */
+    nmt.auth.getSession().then(r=>{
+      if(!(r && r.data && r.data.session)){
+        localStorage.removeItem('namthaja_sso'); localStorage.removeItem('namthaja_name');
+        localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user');
+        location.reload();
+      }
+    }).catch(()=>{});
+  } else if(localStorage.getItem('teacher_auth')==='1'){
+    CURRENT_USER = localStorage.getItem('teacher_user') || 'teacher';
+    open();
+  } else {
+    /* لم يسجل من قبل: جرّب جلسة الموقع الحية (نفس النطاق = دخول تلقائي) */
+    nmt.auth.getSession().then(r=>{
+      const s = r && r.data && r.data.session;
+      if(s && s.user) ssoOpen(s.user);
+    }).catch(()=>{});
   }
+  /* فتح الحساب عبر منصة نمذجة: يجلب الاسم ويطبّق خريطة الربط */
+  async function ssoOpen(user){
+    let prof=null;
+    try{
+      const r = await nmt.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
+      if(r && r.data && r.data.full_name) prof = r.data.full_name;
+    }catch(e){}
+    const meta = user.user_metadata || {};
+    const rawName = prof || meta.full_name || meta.name || (user.email ? user.email.split('@')[0] : 'مستخدم نمذجة');
+    const key = String(rawName).trim().toLowerCase();
+    const mail = String(user.email||'').toLowerCase();
+    const alias = NAMTHAJA_ALIAS[key] || NAMTHAJA_ALIAS[mail] || NAMTHAJA_ALIAS[mail.split('@')[0]];
+    SSO_MODE = true; SSO_NAME = rawName;
+    CURRENT_USER = alias || rawName;
+    localStorage.setItem('namthaja_sso','1');
+    localStorage.setItem('namthaja_name', rawName);
+    localStorage.setItem('teacher_auth','1');
+    localStorage.setItem('teacher_user', CURRENT_USER);
+    open();
+  }
+  /* زر الدخول بحساب نمذجة */
+  async function tryNmtLogin(){
+    const em=document.getElementById('nemail').value.trim();
+    const pw=document.getElementById('npwd').value;
+    err.textContent=''; ok.textContent='';
+    if(!em || !pw){ err.textContent='أدخل البريد الإلكتروني وكلمة المرور'; return; }
+    const btn=document.getElementById('nloginBtn');
+    btn.disabled=true; btn.textContent='جارٍ التحقق من المنصة…';
+    try{
+      const r = await nmt.auth.signInWithPassword({ email:em, password:pw });
+      if(r.error){ err.textContent = r.error.message && /Invalid login/i.test(r.error.message) ? 'البريد أو كلمة المرور غير صحيحة' : ('تعذر الدخول: '+r.error.message); }
+      else if(r.data && r.data.user){ await ssoOpen(r.data.user); }
+    }catch(e){ err.textContent='تعذر الاتصال بمنصة نمذجة — تحقق من الإنترنت'; }
+    btn.disabled=false; btn.textContent='دخول بحساب نمذجة';
+  }
+  document.getElementById('nloginBtn').onclick=tryNmtLogin;
+  document.getElementById('npwd').addEventListener('keydown',e=>{ if(e.key==='Enter') tryNmtLogin(); });
+  document.getElementById('nemail').addEventListener('keydown',e=>{ if(e.key==='Enter') tryNmtLogin(); });
   async function tryLogin(){
     const u=document.getElementById('luser').value.trim();
     const p=document.getElementById('pwd').value;
@@ -940,7 +1040,12 @@ async function saveTset(){
   document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
   document.getElementById('luser').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
   document.getElementById('rpwd2').addEventListener('keydown',e=>{ if(e.key==='Enter') tryRegister(); });
-  out.onclick=()=>{ localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user'); location.reload(); };
+  out.onclick=()=>{
+    localStorage.removeItem('teacher_auth'); localStorage.removeItem('teacher_user');
+    localStorage.removeItem('namthaja_sso'); localStorage.removeItem('namthaja_name');
+    if(SSO_MODE){ try{ nmt.auth.signOut(); }catch(e){} }
+    location.reload();
+  };
 })();
 
 /* ====== البيانات ====== */
