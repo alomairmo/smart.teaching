@@ -6225,15 +6225,13 @@ function stuWeekTotal(cls, si, w){
   const g = (cfg && cfg.useGrades) ? weekGradesSum(cls, si, w) : 0;
   return getStuPoints(cls, si, w) + g;
 }
-/* المجموع الكلي للمجموعة هذا الأسبوع = نقاط المجموعة للأسبوع + مجموع درجات أعضائها (إن كان احتساب الدرجات مفعّلاً) */
+/* المجموع الكلي للمجموعة هذا الأسبوع = نقاط المجموعة للأسبوع + مجموع نقاط أعضائها للأسبوع
+   (نقاط كل طالب + درجاته إن كان احتساب الدرجات مفعّلاً) — يطابق: عمود نقاط الأسبوع + عمود مجموع نقاط الطلاب */
 function grpWeekGrand(cls, gid, w){
   const defs=(groupsCache[cls] && groupsCache[cls].defs) || [];
   const def=defs.find(d=>String(d.id)===String(gid));
   if(!def) return 0;
-  let s=getGroupPoints(cls,gid,w);
-  const cfg=SPTCFG[cls];
-  if(cfg && cfg.useGrades) s+=def.members.reduce((t,si)=>t+weekGradesSum(cls,si,w),0);
-  return s;
+  return getGroupPoints(cls,gid,w) + def.members.reduce((t,si)=>t+stuWeekTotal(cls,si,w),0);
 }
 
 async function setStuPoints(cls,si,w,v){
