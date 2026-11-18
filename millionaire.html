@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مسابقة نافس - من سيربح المليون في العلوم (ثالث متوسط)</title>
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --secondary: #d97706;
+            --accent: #10b981;
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --text-light: #f8fafc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-light); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 25px; border-bottom: 3px solid var(--secondary); padding-bottom: 15px; }
+        header h1 { color: var(--secondary); font-size: 2.2rem; margin-bottom: 5px; text-shadow: 0 0 10px rgba(217,119,6,0.3); }
+        header p { color: #94a3b8; font-size: 1.1rem; }
+        
+        .nav-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; }
+        .tab-btn { background: var(--card-bg); color: var(--text-light); border: 2px solid #334155; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .tab-btn.active, .tab-btn:hover { background: var(--primary); border-color: var(--secondary); transform: translateY(-2px); }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Game Arena */
+        .game-grid { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+        @media(max-width: 900px) { .game-grid { grid-template-columns: 1fr; } }
+        
+        .question-box { background: var(--card-bg); border: 2px solid #334155; border-radius: 15px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 1.1rem; color: var(--secondary); font-weight: bold; }
+        .q-text { font-size: 1.4rem; margin-bottom: 25px; line-height: 1.6; }
+        
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        @media(max-width: 600px) { .options-grid { grid-template-columns: 1fr; } }
+        .option-btn { background: #0f172a; border: 2px solid #475569; color: white; padding: 15px; border-radius: 10px; font-size: 1.1rem; cursor: pointer; text-align: right; transition: 0.2s; }
+        .option-btn:hover:not(:disabled) { background: #334155; border-color: var(--secondary); }
+        .option-btn.correct { background: #065f46 !important; border-color: var(--accent) !important; }
+        .option-btn.wrong { background: #7f1d1d !important; border-color: #ef4444 !important; }
+        
+        .lifelines { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .life-btn { background: #3b82f6; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .life-btn:disabled { background: #475569; opacity: 0.5; cursor: not-allowed; }
+        
+        .controls-row { display: flex; justify-content: space-between; align-items: center; }
+        .action-btn { background: var(--secondary); color: white; border: none; padding: 12px 25px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
+        .action-btn:hover { filter: brightness(1.1); }
+        
+        /* Sidebar Panel */
+        .sidebar-panel { background: var(--card-bg); border-radius: 15px; padding: 20px; border: 2px solid #334155; }
+        .sidebar-panel h3 { margin-bottom: 15px; color: var(--secondary); border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        .team-score-card { background: #0f172a; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-right: 5px solid var(--secondary); }
+        
+        /* Teams Tab */
+        .teams-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        @media(max-width: 900px) { .teams-container { grid-template-columns: 1fr; } }
+        .team-box { background: var(--card-bg); border-radius: 12px; padding: 20px; border: 2px solid #334155; }
+        .student-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+        .student-row input { flex: 1; background: #0f172a; border: 1px solid #475569; color: white; padding: 8px; border-radius: 6px; }
+        .leader-badge { cursor: pointer; font-size: 1.2rem; filter: grayscale(1); transition: 0.2s; }
+        .leader-badge.active { filter: grayscale(0); }
+        
+        .save-banner { background: #065f46; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-size: 1.1rem; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        /* ===== شاشة إعدادات المسابقة (نمط ألعاب المنصة) ===== */
+        .container{display:none}
+        #milSetup{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at center,#1e293b 0%,#0b1120 100%);overflow-y:auto;padding:20px}
+        .milCard{background:#1e293b;border:2px solid #334155;border-radius:18px;padding:24px 26px;max-width:660px;width:100%;margin:10px auto;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+        .milCard h1{color:#d97706;text-align:center;font-size:1.6rem;margin-bottom:4px}
+        .milCard .sub{color:#94a3b8;text-align:center;font-size:.85rem;margin-bottom:14px}
+        .milSec{font-weight:800;color:#d97706;margin:14px 0 8px;font-size:.98rem;border-top:1px dashed #334155;padding-top:12px}
+        .milRow{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+        .milRow>label{font-weight:700;color:#e2e8f0;font-size:.92rem;min-width:125px}
+        .milOpts{display:flex;gap:14px;flex-wrap:wrap}
+        .milOpts label{display:flex;gap:6px;align-items:center;font-size:.9rem;color:#cbd5e1;cursor:pointer}
+        .milBox{border:1px solid #334155;border-radius:10px;padding:8px 10px;max-height:170px;overflow-y:auto;background:#0f172a;width:100%}
+        .milBox label{display:flex;gap:6px;align-items:center;font-size:.85rem;color:#cbd5e1;padding:3px 0;cursor:pointer}
+        .milHint{font-size:.75rem;color:#64748b;margin-top:4px}
+        .milMiniBtn{padding:3px 12px;border-radius:8px;border:1px solid #475569;background:#334155;color:#e2e8f0;cursor:pointer;font-weight:700;font-size:.75rem;font-family:inherit}
+        #milStartBtn{width:100%;margin-top:16px;padding:13px;font:inherit;font-size:1.1rem;font-weight:800;color:#fff;background:linear-gradient(135deg,#d97706,#b45309);border:0;border-radius:12px;cursor:pointer;box-shadow:0 4px 14px rgba(217,119,6,.4)}
+        #milStartBtn:hover{filter:brightness(1.1)}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🏆 مسابقة نافس: من سيربح المليون (علوم ثالث متوسط)</h1>
+        <p>33 طالباً • 3 فرق • أسئلة شاملة للمهارات المستهدفة</p>
+    </header>
+
+    <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('game')">🎮 ساحة المسابقة</button>
+        <button class="tab-btn" onclick="switchTab('teams')">👥 إدارة الطلاب والفرق والقادة</button>
+        <button class="tab-btn" onclick="switchTab('questions')">➕ بنك الأسئلة المخصص</button>
+        <button class="tab-btn" onclick="exportPermanentFile()" style="background: #047857;">💾 حفظ التطبيق كملف دائم</button>
+    </div>
+
+    <!-- 1. تبويب ساحة المسابقة -->
+    <div id="game" class="tab-content active">
+        <div class="game-grid">
+            <div class="question-box">
+                <div class="q-header">
+                    <span id="currentTeamDisplay">الفريق: الصقور 🦅</span>
+                    <span id="currentLevelDisplay">المستوى: سهل (1 درجة)</span>
+                </div>
+                <div class="lifelines">
+                    <button class="life-btn" id="life50" onclick="useLife50()">✂️ حذف إجابتين (50:50)</button>
+                    <button class="life-btn" id="lifeFriend" onclick="useLifeFriend()">📞 استشارة صديق (10ث)</button>
+                    <button class="life-btn" id="lifeLeader" onclick="useLifeLeader()">👑 تبديل القائد</button>
+                </div>
+                <div class="q-text" id="questionText">جاري تحميل السؤال...</div>
+                <div class="options-grid" id="optionsContainer"></div>
+                <div id="explanationBox" style="margin-top: 15px; padding: 12px; background: #0f172a; border-radius: 8px; display: none; color: #34d399; font-size: 1rem;"></div>
+                <div class="controls-row" style="margin-top: 20px;">
+                    <button class="action-btn" onclick="nextQuestion()">السؤال التالي ➡️</button>
+                    <span id="timerDisplay" style="font-size: 1.2rem; font-weight: bold; color: var(--secondary);"></span>
+                </div>
+            </div>
+
+            <div class="sidebar-panel">
+                <h3>📊 لوحة درجات الفرق</h3>
+                <div id="teamsScoreSidebar"></div>
+                <h3 style="margin-top: 20px;">👑 قادة الفرق</h3>
+                <div id="leadersSidebar" style="font-size: 0.95rem; color: #cbd5e1;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. تبويب الفرق والطلاب والقادة -->
+    <div id="teams>" class="tab-content">
+        <div class="teams-container" id="teamsConfigContainer"></div>
+    </div>
+
+    <!-- 3. تبويب الأسئلة المخصصة -->
+    <div id="questions" class="tab-content">
+        <div class="question-box">
+            <h3 style="color: var(--secondary); margin-bottom: 15px;">➕ إضافة سؤال جديد للبنك</h3>
+            <div style="display: grid; gap: 12px;">
+                <input type="text" id="newQText" placeholder="نص السؤال العلمي..." style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <input type="text" id="newOpt0" placeholder="الخيار أ" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                    <input type="text" id="newOpt1" placeholder="الخيار ب" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                    <input type="text" id="newOpt2" placeholder="الخيار ج" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                    <input type="text" id="newOpt3" placeholder="الخيار د" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <select id="newCorrect" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                        <option value="0">الإجابة الصحيحة: الخيار أ</option>
+                        <option value="1">الإجابة الصحيحة: الخيار ب</option>
+                        <option value="2">الإجابة الصحيحة: الخيار ج</option>
+                        <option value="3">الإجابة الصحيحة: الخيار د</option>
+                    </select>
+                    <select id="newLevel" style="padding: 10px; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px;">
+                        <option value="1">المستوى: سهل (1 درجة)</option>
+                        <option value="2">المستوى: متوسط (2 درجات)</option>
+                        <option value="3">المستوى: متقدم (3 درجات)</option>
+                    </select>
+                </div>
+                <button class="action-btn" onclick="addNewQuestion()">إضافة السؤال للبنك 📥</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // البيانات الأساسية
+    let teams = [
+        { id: 0, name: "فريق الصقور 🦅", score: 0, leaderIndex: 0, students: Array.from({length: 11}, (_, i) => `طالب صقر ${i+1}`) },
+        { id: 1, name: "فريق الرواد 🚀", score: 0, leaderIndex: 0, students: Array.from({length: 11}, (_, i) => `طالب رائد ${i+1}`) },
+        { id: 2, name: "فريق الأبطال 🏆", score: 0, leaderIndex: 0, students: Array.from({length: 11}, (_, i) => `طالب بطل ${i+1}`) }
+    ];
+
+    let questions = [
+        { q: "القوة التي تمنع الأجسام من الانزلاق وتعارض حركة الأسطح المتلامسة هي:", options: ["الجاذبية", "المغناطيسية", "الاحتكاك", "الدفع"], correct: 2, level: 1, explanation: "الاحتكاك هو قوة تعارض حركة الأسطح المتلامسة." },
+        { q: "ماذا يُسمى الخطوات المنهجية التي يتبعها العلماء في حل المشكلات ودراسة الظواهر؟", options: ["الفرضية التجريبية", "الطريقة العلمية (أسلوب العلم)", "الاستنتاج العشوائي", "التدوين الملاحظ"], correct: 1, level: 1, explanation: "أسلوب العلم أو الطريقة العلمية هي الخطوات المنهجية للبحث والدراسة." },
+        { q: "أيّ مما يلي يُعتبر مصدراً للطاقة المتجددة والنظيفة؟", options: ["الفحم الحجري", "النفط", "الطاقة الشمسية", "الغاز الطبيعي"], correct: 2, level: 1, explanation: "الطاقة الشمسية مصدر متجدد ونظيف وغير مُلوث للبيئة." },
+        { q: "أيّ من العبارات التالية يُمثّل قانون نيوتن الثاني في الحركة؟", options: ["لكل فعل رد فعل مساوٍ له في المقدار", "يبقى الجسم على حالته ما لم تؤثر فيه قوة خارجية", "تسارع الجسم يساوي ناتج قسمة محصلة القوى على كتلته (a=F/m)", "القوة تساوي الكتلة في المسافة"], correct: 2, level: 2, explanation: "قانون نيوتن الثاني ينص على أن تسارع الجسم يتناسب طردياً مع محصلة القوى وعكسياً مع كتلته." },
+        { q: "العنصر الذي له العدد الذري 6 ويدخل في تكوين جميع المركبات العضوية هو:", options: ["الأكسجين", "الهيدروجين", "النيتروجين", "الكربون"], correct: 2, level: 3, explanation: "الكربون هو أساس الكيمياء العضوية ويمتلك العدد الذري 6." },
+        { q: "المركبات الكيميائية المسؤولة بشكل رئيسي عن استنزاف طبقة الأوزون هي:", options: ["أكاسيد النيتروجين", "ثنائي أكسيد الكربون", "مركبات الكلوروفلوروكربون (CFCs)", "غاز الميثان"], correct: 2, level: 3, explanation: "مركبات CFCs تدمر جزيئات الأوزون في طبقة الاستراتوسفير." }
+    ];
+
+    let currentTeamIdx = 0;
+    let currentQIdx = 0;
+    let answeredCurrent = false;
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.target.classList.add('active');
+        if(tabId === 'teams') renderTeamsConfig();
+        if(tabId === 'game') loadQuestion();
+    }
+
+    function loadQuestion() {
+        answeredCurrent = false;
+        document.getElementById('explanationBox').style.display = 'none';
+        
+        if(currentQIdx >= questions.length) currentQIdx = 0;
+        let q = questions[currentQIdx];
+
+        document.getElementById('currentTeamDisplayinnerText').innerText = `الفريق: ${teams[currentTeamIdx].name}`;
+        document.getElementById('currentTeamDisplay').innerText = `دور: ${teams[currentTeamIdx].name} (القائد: ${teams[currentTeamIdx].students[teams[currentTeamIdx].leaderIndex]})`;
+        document.getElementById('currentLevelDisplay').innerText = `المستوى: ${q.level === 1 ? 'سهل (1 درجة)' : q.level === 2 ? 'متوسط (2 درجات)' : 'متقدم (3 درجات)'}`;
+        document.getElementById('questionText').innerText = q.q;
+
+        let optHtml = '';
+        q.options.forEach((opt, idx) => {
+            optHtml += `<button class="option-btn" id="opt_${idx}" onclick="checkAnswer(${idx})">${String.fromCharCode(1571 + idx)}) ${opt}</button>`;
+        });
+        document.getElementById('optionsContainer').innerHTML = optHtml;
+        updateSidebar();
+    }
+
+    function checkAnswer(selectedIdx) {
+        if(answeredCurrent) return;
+        answeredCurrent = true;
+        let q = questions[currentQIdx];
+        let correctIdx = q.correct;
+
+        document.getElementById(`opt_${correctIdx}`).classList.add('correct');
+        if(selectedIdx !== correctIdx) {
+            document.getElementById(`opt_${selectedIdx}`).classList.add('wrong');
+        } else {
+            let pts = q.level;
+            teams[currentTeamIdx].score += pts;
+        }
+
+        let expBox = document.getElementById('explanationBox');
+        expBox.style.display = 'block';
+        expBox.innerText = `💡 التفسير العلمي: ${q.explanation}`;
+        updateSidebar();
+    }
+
+    function nextQuestion() {
+        currentQIdx++;
+        currentTeamIdx = (currentTeamIdx + 1) % teams.length;
+        loadQuestion();
+    }
+
+    function updateSidebar() {
+        let sb = '';
+        teams.forEach(t => {
+            sb += `<div class="team-score-card"><b>${t.name}</b><br>النقاط: <b>${t.score}</b></div>`;
+        });
+        document.getElementById('teamsScoreSidebar').innerHTML = sb;
+
+        let lb = '';
+        teams.forEach(t => {
+            lb += `<div><b>${t.name.split(' ')[0]}:</b> ${t.students[t.leaderIndex]} 👑</div>`;
+        });
+        document.getElementById('leadersSidebar').innerHTML = lb;
+    }
+
+    function renderTeamsConfig() {
+        let html = '';
+        teams.forEach((t, tIdx) => {
+            html += `<div class="team-box"><h3>${t.name}</h3>`;
+            t.students.forEach((sName, sIdx) => {
+                let isLeader = t.leaderIndex === sIdx;
+                html += `<div class="student-row">
+                    <span class="leader-badge ${isLeader ? 'active' : ''}" title="تعيين قائد" onclick="setLeader(${tIdx}, ${sIdx})">👑</span>
+                    <input type="text" value="${sName}" onchange="updateStudentName(${tIdx}, ${sIdx}, this.value)">
+                </div>`;
+            });
+            html += `</div>`;
+        });
+        document.getElementById('teamsConfigContainer').innerHTML = html;
+    }
+
+    function setLeader(tIdx, sIdx) {
+        teams[tIdx].leaderIndex = sIdx;
+        renderTeamsConfig();
+        updateSidebar();
+    }
+
+    function updateStudentName(tIdx, sIdx, val) {
+        teams[tIdx].students[sIdx] = val;
+    }
+
+    function addNewQuestion() {
+        let text = document.getElementById('newQText').value;
+        let o0 = document.getElementById('newOpt0').value;
+        let o1 = document.getElementById('newOpt1').value;
+        let o2 = document.getElementById('newOpt2').value;
+        let o3 = document.getElementById('newOpt3').value;
+        let correct = parseInt(document.getElementById('newCorrect').value);
+        let level = parseInt(document.getElementById('newLevel').value);
+
+        if(!text || !o0 || !o1 || !o2 || !o3) {
+            alert('الرجاء تعبئة جميع حقول السؤال والخيارات.');
+            return;
+        }
+
+        questions.push({ q: text, options: [o0, o1, o2, o3], correct: correct, level: level, explanation: "سؤال مضاف بواسطة المعلم." });
+        alert('تم إضافة السؤال بنجاح إلى بنك الأسئلة!');
+        document.getElementById('newQText').value = '';
+        document.getElementById('newOpt0').value = '';
+        document.getElementById('newOpt1').value = '';
+        document.getElementById('newOpt2').value = '';
+        document.getElementById('newOpt3').value = '';
+    }
+
+    // وسائل المساعدة
+    function useLife50() {
+        let q = questions[currentQIdx];
+        let wrongIndices = [];
+        for(let i=0; i<4; i++) { if(i !== q.correct) wrongIndices.push(i); }
+        wrongIndices.sort(() => Math.random() - 0.5);
+        document.getElementById(`opt_${wrongIndices[0]}`).style.visibility = 'hidden';
+        document.getElementById(`opt_${wrongIndices[1]}`).style.visibility = 'hidden';
+        document.getElementById('life50').disabled = true;
+    }
+
+    function useLifeFriend() {
+        alert("📞 لديك 10 ثوانٍ للتشاور مع زملائك في الفريق!");
+        document.getElementById('lifeFriend').disabled = true;
+    }
+
+    function useLifeLeader() {
+        alert("👑 تم استخدام صلاحية القائد لتغيير السؤال!");
+        currentQIdx++;
+        loadQuestion();
+        document.getElementById('lifeLeader').disabled = true;
+    }
+
+    function exportPermanentFile() {
+        let htmlContent = document.documentElement.outerHTML;
+        let blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = 'مسابقة_نافس_علوم_محفوظة.html';
+        a.click();
+    }
+
+    window.onload = function() {
+        loadQuestion();
+    };
+</script>
+
+
+<!-- شاشة إعدادات المسابقة -->
+<div id="milSetup">
+  <div class="milCard">
+    <h1>💰 من سيربح المليون</h1>
+    <div class="sub">مسابقة بنمط «من سيربح المليون» — النقاط المكتسبة تُضاف فوراً إلى نقاط المجموعات في الأسبوع المحدد</div>
+
+    <div class="milSec">👥 نمط المشاركة</div>
+    <div class="milRow">
+      <label>المتسابقون:</label>
+      <div class="milOpts">
+        <label><input type="radio" name="milMode" value="groups" checked> المجموعات (فرق الفصل)</label>
+        <label><input type="radio" name="milMode" value="students"> طلاب (أسماء من الكشف)</label>
+      </div>
+    </div>
+
+    <div class="milSec">📚 مصدر الأسئلة</div>
+    <div class="milRow">
+      <label>المصدر:</label>
+      <div class="milOpts">
+        <label><input type="radio" name="milSrc" value="builtin" checked> بنك اللعبة الافتراضي</label>
+        <label><input type="radio" name="milSrc" value="cur"> أسئلة دروس المنهج</label>
+        <label><input type="radio" name="milSrc" value="oral"> بدون أسئلة (سؤال المعلم شفهياً)</label>
+      </div>
+    </div>
+    <div id="milCurOpts" style="display:none">
+      <div class="milRow">
+        <label>نوع الأسئلة:</label>
+        <div class="milOpts">
+          <label><input type="radio" name="milQtype" value="both" checked> خيارات ومقالية</label>
+          <label><input type="radio" name="milQtype" value="mcq"> خيارات فقط</label>
+          <label><input type="radio" name="milQtype" value="open"> مقالية فقط</label>
+        </div>
+      </div>
+      <div class="milRow" style="align-items:flex-start">
+        <label>الدروس المشمولة:</label>
+        <div style="flex:1">
+          <div style="margin-bottom:4px">
+            <button class="milMiniBtn" id="milAllL">تحديد الكل</button>
+            <button class="milMiniBtn" id="milNoL">إلغاء الكل</button>
+          </div>
+          <div class="milBox" id="milLessonsBox"><div class="milHint">جارٍ استقبال أسئلة المنهج من صفحة الدرس…</div></div>
+        </div>
+      </div>
+    </div>
+    <div id="milOralNote" style="display:none" class="milHint">وضع سؤال المعلم: تسأل الطالب/المجموعة شفهياً ثم تقيّم ✔ أو ✖ — والدرجة حسب مستوى السؤال الحالي.</div>
+    <div id="milBuiltinNote" class="milHint">البنك الافتراضي المرفق مع اللعبة (أسئلة بمستوياتها وشروحها كما في الكود الأصلي).</div>
+    <button id="milStartBtn">🚀 بدء المسابقة</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   طبقة التوافق مع منصة إدارة الصف الذكية
+   (اللعبة الأصلية أعلاه كما هي — هذه الطبقة تغذّيها بالبيانات
+    وتحفظ النقاط في كشف المجموعات، وتعيد تعريف بعض الدوال)
+   ============================================================ */
+const MIL_P = new URLSearchParams(location.search);
+const MIL_CLS = MIL_P.get('cls') || 'g4';
+const MIL_W = +(MIL_P.get('w') || 1);
+const MIL_SBC = supabase.createClient("https://lazyikoawttfcflpdixs.supabase.co", "sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI");
+let MIL_LESSONS = [], MIL_BANK = [], MIL_STUDENTS = [], MIL_GROUPS = [];
+const milCfg = { mode:'groups', src:'builtin', qtype:'both', lessons:null };
+const BUILTIN_QUESTIONS = questions.slice();   /* بنك الكود الأصلي كما هو */
+
+/* ---------- استقبال بيانات الصفحة الأم ---------- */
+window.addEventListener('message', e=>{
+  const d = e.data || {};
+  if(d.type==='mil_questions'){
+    MIL_LESSONS = d.lessons || [];
+    MIL_BANK = d.list || [];
+    milBuildLessonsBox();
+  } else if(d.type==='mil_roster'){
+    MIL_STUDENTS = d.students || [];
+    MIL_GROUPS = d.groups || [];
+  }
+});
+function milBuildLessonsBox(){
+  const box = document.getElementById('milLessonsBox');
+  box.innerHTML = '';
+  const counts = {};
+  MIL_BANK.forEach(q=>counts[q.lesson]=(counts[q.lesson]||0)+1);
+  MIL_LESSONS.forEach(L=>{
+    const c = counts[L.key]||0;
+    const lb = document.createElement('label');
+    lb.innerHTML = `<input type="checkbox" value="${L.key}" ${c?'checked':''} ${c?'':'disabled'}> ${L.title} <span class="milHint">(${c} سؤال)</span>`;
+    box.appendChild(lb);
+  });
+  if(!MIL_LESSONS.length) box.innerHTML = '<div class="milHint">لم تصل أسئلة بعد… تأكد من فتح اللعبة من صفحة درس</div>';
+}
+document.getElementById('milAllL').onclick = e=>{ e.preventDefault(); document.querySelectorAll('#milLessonsBox input:not(:disabled)').forEach(c=>c.checked=true); };
+document.getElementById('milNoL').onclick = e=>{ e.preventDefault(); document.querySelectorAll('#milLessonsBox input').forEach(c=>c.checked=false); };
+
+/* إظهار/إخفاء خيارات مصدر الأسئلة */
+document.querySelectorAll('input[name="milSrc"]').forEach(r=>r.addEventListener('change', ()=>{
+  const v = document.querySelector('input[name="milSrc"]:checked').value;
+  document.getElementById('milCurOpts').style.display = v==='cur' ? '' : 'none';
+  document.getElementById('milOralNote').style.display = v==='oral' ? '' : 'none';
+  document.getElementById('milBuiltinNote').style.display = v==='builtin' ? '' : 'none';
+}));
+
+/* إخفاء تبويب «إدارة الطلاب والفرق» الخاص بالكود الأصلي — الفرق تُدار من المنصة */
+document.querySelectorAll('.tab-btn').forEach(b=>{
+  if(b.getAttribute('onclick') && b.getAttribute('onclick').includes("'teams'")) b.style.display='none';
+});
+
+/* نطلب بيانات المنهج والكشف من الصفحة الأم فور الجاهزية — ونلغي التشغيل التلقائي الأصلي */
+window.onload = function(){
+  try{ parent.postMessage({type:'mil_need_questions'}, '*'); }catch(e){}
+};
+
+/* ---------- بدء المسابقة ---------- */
+document.getElementById('milStartBtn').onclick = ()=>{
+  milCfg.mode = document.querySelector('input[name="milMode"]:checked').value;
+  milCfg.src = document.querySelector('input[name="milSrc"]:checked').value;
+  milCfg.qtype = document.querySelector('input[name="milQtype"]:checked').value;
+  milCfg.lessons = [...document.querySelectorAll('#milLessonsBox input:checked')].map(c=>c.value);
+
+  /* بناء المتسابقين */
+  if(milCfg.mode==='groups'){
+    const gs = MIL_GROUPS.length ? MIL_GROUPS : [1,2,3,4].map(i=>({id:i, name:'المجموعة '+i, members:[], leader:null, weekPts:20}));
+    teams = gs.map(g=>({ id:g.id, name:g.name, score:0, leaderIndex:0, asked:0,
+      students: (g.members && g.members.length) ? g.members.map(si=>MIL_STUDENTS[si]||('طالب '+(si+1))) : ['—'],
+      leaderName: (g.leader!==null && g.leader!==undefined) ? (MIL_STUDENTS[g.leader]||'') : '',
+      gid: g.id, weekPts: g.weekPts }));
+  } else {
+    teams = (MIL_STUDENTS||[]).map((n,si)=>({ id:si, name:n, score:0, leaderIndex:0, students:[n], si:si, asked:0 }));
+    if(!teams.length){ alert('لم يُستلم كشف الطلاب من المنصة.'); return; }
+  }
+
+  /* بناء الأسئلة */
+  if(milCfg.src==='builtin'){
+    questions = BUILTIN_QUESTIONS.slice();
+  } else if(milCfg.src==='cur'){
+    let pool = MIL_BANK.filter(q=>!milCfg.lessons.length || milCfg.lessons.includes(q.lesson));
+    pool = pool.filter(q=>{
+      const isMcq = q.t==='mcq' && q.c && q.c.length>=2;
+      return milCfg.qtype==='both' ? (isMcq || q.a) : (milCfg.qtype==='mcq' ? isMcq : !isMcq);
+    });
+    for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+    if(!pool.length){ alert('لا توجد أسئلة مطابقة للإعدادات — عدّل الدروس أو نوع الأسئلة.'); return; }
+    questions = pool.map(q=>({ raw:q, q:q.q, options:(q.c?q.c.slice():null), correct:q.a, level:0, explanation:'', lesson:q.lesson }));
+  } else {
+    questions = [];
+  }
+
+  currentTeamIdx = 0; currentQIdx = 0;
+  document.getElementById('milSetup').style.display = 'none';
+  document.querySelector('.container').style.display = 'block';
+  loadQuestion();
+};
+
+/* ---------- أدوات الحفظ في كشف المجموعات ---------- */
+async function milPushGroup(g){
+  try{
+    await MIL_SBC.from('marks').upsert({ class_key:'grp:'+MIL_CLS+':'+g.id, week:MIL_W, student_idx:0, criterion_idx:0,
+      value:String(g.weekPts), updated_at:new Date().toISOString() });
+  }catch(e){}
+}
+function milGroupOfStudent(si){ return MIL_GROUPS.find(g=>(g.members||[]).includes(si)) || null; }
+function milLevel(){
+  if(milCfg.src==='builtin' && questions[currentQIdx] && questions[currentQIdx].level) return questions[currentQIdx].level;
+  const t = teams[currentTeamIdx] || {asked:0};
+  return 1 + Math.min(2, Math.floor((t.asked||0)/2));   /* تدرّج: أول سؤالين سهل، ثم متوسط، ثم متقدم */
+}
+function milAward(ok, pts){
+  const t = teams[currentTeamIdx];
+  t.asked = (t.asked||0)+1;
+  if(ok){
+    t.score += pts;
+    let g = null;
+    if(t.gid!==undefined) g = MIL_GROUPS.find(x=>String(x.id)===String(t.gid));
+    else if(t.si!==undefined) g = milGroupOfStudent(t.si);
+    if(g){
+      g.weekPts = (g.weekPts===undefined ? 20 : g.weekPts) + pts;
+      t.weekPts = g.weekPts;
+      milPushGroup(g);
+    }
+  }
+  updateSidebar();
+}
+function milJudgeButtons(box, lvl){
+  const ok = document.createElement('button');
+  ok.className = 'option-btn correct'; ok.style.textAlign='center';
+  ok.innerText = '✔ إجابة صحيحة (+' + lvl + (lvl>2?' نقاط':' نقطة') + ')';
+  ok.onclick = ()=>{ if(answeredCurrent) return; answeredCurrent=true; box.querySelectorAll('button').forEach(x=>x.disabled=true); milAward(true, lvl); };
+  const no = document.createElement('button');
+  no.className = 'option-btn wrong'; no.style.textAlign='center';
+  no.innerText = '✖ إجابة خاطئة';
+  no.onclick = ()=>{ if(answeredCurrent) return; answeredCurrent=true; box.querySelectorAll('button').forEach(x=>x.disabled=true); milAward(false, lvl); };
+  box.appendChild(ok); box.appendChild(no);
+}
+
+/* ---------- إعادة تعريف دوال اللعبة لتعمل مع بيانات المنصة ---------- */
+function loadQuestion(){
+  answeredCurrent = false;
+  document.getElementById('explanationBox').style.display = 'none';
+  const t = teams[currentTeamIdx];
+  const lvl = milLevel();
+  document.getElementById('currentTeamDisplay').innerText = 'دور: ' + t.name + (t.leaderName ? ' (القائد: '+t.leaderName+' 👑)' : '');
+  document.getElementById('currentLevelDisplay').innerText = 'المستوى: ' + (lvl===1?'سهل (1 درجة)':lvl===2?'متوسط (درجتان)':'متقدم (3 درجات)');
+  const qText = document.getElementById('questionText');
+  const box = document.getElementById('optionsContainer');
+  document.getElementById('life50').style.display = (milCfg.src==='oral') ? 'none' : '';
+  document.getElementById('lifeLeader').style.display = (milCfg.src==='oral') ? 'none' : '';
+
+  if(milCfg.src==='oral'){
+    qText.innerText = '🎤 سؤال شفهي من المعلم — اسأل ثم قيّم الإجابة:';
+    box.innerHTML = '';
+    milJudgeButtons(box, lvl);
+    updateSidebar();
+    return;
+  }
+  if(currentQIdx >= questions.length) currentQIdx = 0;
+  const q = questions[currentQIdx];
+  qText.innerText = q.q;
+  box.innerHTML = '';
+  if(q.options && q.options.length>=2){
+    /* خلط ترتيب العرض مع بقاء الفهرس الأصلي للإجابة */
+    const order = q.options.map((_,i)=>i);
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const x=order[i]; order[i]=order[j]; order[j]=x; }
+    order.forEach((oi,di)=>{
+      const b = document.createElement('button');
+      b.className = 'option-btn'; b.id = 'opt_'+oi;
+      b.innerText = String.fromCharCode(1571+di) + ') ' + q.options[oi];
+      b.onclick = ()=>checkAnswer(oi);
+      box.appendChild(b);
+    });
+  } else {
+    /* سؤال مقالي: إظهار الإجابة النموذجية ثم تقييم المعلم */
+    const sh = document.createElement('button');
+    sh.className = 'option-btn'; sh.style.textAlign='center';
+    sh.innerText = '📖 إظهار الإجابة النموذجية';
+    sh.onclick = ()=>{
+      const exp = document.getElementById('explanationBox');
+      exp.style.display = 'block';
+      exp.innerText = '💡 الإجابة النموذجية: ' + ((q.raw && q.raw.a) || q.explanation || '—');
+      box.innerHTML = '';
+      milJudgeButtons(box, lvl);
+    };
+    box.appendChild(sh);
+  }
+  updateSidebar();
+}
+
+function checkAnswer(selectedIdx){
+  if(answeredCurrent) return;
+  answeredCurrent = true;
+  const q = questions[currentQIdx];
+  const correctIdx = q.correct;
+  document.getElementById('opt_'+correctIdx).classList.add('correct');
+  const ok = selectedIdx === correctIdx;
+  if(!ok) document.getElementById('opt_'+selectedIdx).classList.add('wrong');
+  milAward(ok, milLevel());
+  const expBox = document.getElementById('explanationBox');
+  expBox.style.display = 'block';
+  expBox.innerText = '💡 ' + (q.explanation || ('الإجابة الصحيحة: ' + q.options[correctIdx]));
+  updateSidebar();
+}
+
+function nextQuestion(){
+  if(milCfg.src!=='oral') currentQIdx++;
+  currentTeamIdx = (currentTeamIdx + 1) % teams.length;
+  loadQuestion();
+}
+
+function updateSidebar(){
+  document.getElementById('teamsScoreSidebar').innerHTML = teams.map(t=>
+    `<div class="team-score-card"><b>${t.name}</b><br>نقاط اللعبة: <b>${t.score}</b>${t.weekPts!==undefined ? ' — رصيد الأسبوع: <b>'+t.weekPts+'</b>' : ''}</div>`).join('');
+  document.getElementById('leadersSidebar').innerHTML = teams.map(t=>
+    `<div><b>${t.name}:</b> ${t.leaderName ? t.leaderName+' 👑' : (t.students && t.students[0] || '')}</div>`).join('');
+}
+
+/* وسائل المساعدة — متوافقة مع عدد خيارات متغير ووضع المعلم */
+function useLife50(){
+  const q = questions[currentQIdx];
+  if(!q || !q.options) return;
+  let wrongIndices = [];
+  for(let i=0; i<q.options.length; i++){ if(i !== q.correct) wrongIndices.push(i); }
+  wrongIndices.sort(() => Math.random() - 0.5);
+  const hide = wrongIndices.slice(0, Math.max(1, q.options.length-2));
+  hide.forEach(i=>{ const el=document.getElementById('opt_'+i); if(el) el.style.visibility='hidden'; });
+  document.getElementById('life50').disabled = true;
+}
+function useLifeLeader(){
+  if(milCfg.src!=='oral'){ currentQIdx++; }
+  loadQuestion();
+  document.getElementById('lifeLeader').disabled = true;
+}
+</script>
+
+</body>
+</html>

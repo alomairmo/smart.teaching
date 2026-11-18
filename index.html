@@ -43185,6 +43185,64 @@ function initLpClassPanes(cls, w, li, lp){
       });
     }
   };
+  /* 💰 من سيربح المليون — تعمل داخل التبويب وتبقى شغالة عند التنقل */
+  const milSel = lp.querySelector('.lpMilWeek');
+  lpFillWeeks(milSel, false);
+  milSel.value = CUR_WEEK;
+  const milStage = lp.querySelector('.lpMilStage');
+  const milCard  = lp.querySelector('.lpMilCard');
+  lp.querySelector('.lpMilBack').onclick=()=>{
+    milStage.style.display='none';
+    milCard.style.display='';
+  };
+  lp.querySelector('.lpMilPlay').onclick=()=>{
+    const gw = +milSel.value;
+    let ifr = milStage.querySelector('iframe');
+    if(ifr && +ifr.dataset.w === gw){
+      milCard.style.display='none';
+      milStage.style.display='';
+      return;
+    }
+    if(ifr) ifr.remove();
+    ifr=document.createElement('iframe');
+    ifr.dataset.w=gw;
+    window._milIfr=ifr;
+    ifr.src=`millionaire.html?cls=${cls}&w=${gw}`;
+    ifr.style.cssText='width:100%;height:78vh;min-height:520px;border:0;border-radius:12px;background:#0f172a';
+    milStage.appendChild(ifr);
+    milCard.style.display='none';
+    milStage.style.display='';
+    const sendMil=async ()=>{
+      const payload=await gatherAllQuestions(cls);
+      await fetchGroups(cls);
+      const defs=(groupsCache[cls]&&groupsCache[cls].defs)||[];
+      const groups=defs.map(d=>({id:d.id,name:d.name,leader:d.leader,members:d.members,weekPts:getGroupPoints(cls,d.id,gw)}));
+      try{
+        ifr.contentWindow.postMessage({type:'mil_questions', lessons:payload.lessons, list:payload.list}, '*');
+        ifr.contentWindow.postMessage({type:'mil_roster', students:(ROSTERS[cls]&&ROSTERS[cls].students)||[], groups}, '*');
+      }catch(e){}
+    };
+    ifr.addEventListener('load', sendMil);
+    /* إعادة الإرسال إذا طلبت اللعبة الأسئلة أو بيانات الطلاب */
+    if(!window._milMsgBound){
+      window._milMsgBound=true;
+      window.addEventListener('message',e=>{
+        if((e.data||{}).type==='mil_need_questions'){
+          const f=window._milIfr;
+          if(f) (async()=>{
+            const payload=await gatherAllQuestions(cls);
+            await fetchGroups(cls);
+            const defs=(groupsCache[cls]&&groupsCache[cls].defs)||[];
+            const groups=defs.map(d=>({id:d.id,name:d.name,leader:d.leader,members:d.members,weekPts:getGroupPoints(cls,d.id,+f.dataset.w)}));
+            try{
+              f.contentWindow.postMessage({type:'mil_questions', lessons:payload.lessons, list:payload.list}, '*');
+              f.contentWindow.postMessage({type:'mil_roster', students:(ROSTERS[cls]&&ROSTERS[cls].students)||[], groups}, '*');
+            }catch(e2){}
+          })();
+        }
+      });
+    }
+  };
   /* عرض مبدئي على الأسبوع الحالي */
   renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
   renderLpGroups(cls, +gSel.value, gPane);
@@ -43228,6 +43286,7 @@ function openLessonPage(cls,w,li){
       <button class="tab" data-pane="lpPaneGroups">درجات المجموعات</button>
       <button class="tab" data-pane="lpPaneShips">🚢 حرب السفن</button>
       <button class="tab" data-pane="lpPaneSnakes">🐍 السلم والثعبان</button>
+    <button class="tab" data-pane="lpPaneMil">💰 من سيربح المليون</button>
     </div>
     <div class="lpPane" id="lpPaneVideo">
       ${ytId
@@ -43341,6 +43400,23 @@ function openLessonPage(cls,w,li){
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لأي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
           <button class="pbtn2 ghost lpSnakesBack">⚙️ شاشة البداية</button>
+        </div>
+      </div>
+    </div>
+    <div class="lpPane" id="lpPaneMil" style="display:none">
+      <div class="weekcard lpMilCard" style="margin-top:14px;text-align:center">
+        <h3>💰 من سيربح المليون</h3>
+        <div class="note" style="text-align:right">لعبة الأسئلة الشهيرة بمستويات متصاعدة ووسائل مساعدة (حذف إجابتين، سؤال صديق، سؤال قائد المجموعة). عند التشغيل تختار طريقة المشاركة (مجموعات أو طلاب أفراد)، ومصدر الأسئلة (بنك اللعبة المدمج، أو أسئلة الدروس مع تحديد الدروس ونوع الأسئلة: خيارات/مقالي/كلاهما، أو أسئلة شفهية يسألها المعلم ويحدد صحة الإجابة بنفسه). النقاط المكتسبة تُضاف لنقاط المجموعة في الأسبوع المحدد.</div>
+        <div class="controls" style="justify-content:center;margin-top:10px">
+          <label>أسبوع احتساب النقاط:</label>
+          <select class="lpMilWeek"></select>
+          <button class="pbtn2 lpMilPlay">💰 تشغيل اللعبة</button>
+        </div>
+      </div>
+      <div class="lpMilStage" style="display:none;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لأي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpMilBack">⚙️ شاشة البداية</button>
         </div>
       </div>
     </div>
