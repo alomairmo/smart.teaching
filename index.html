@@ -41282,9 +41282,18 @@ function openAddQuestionModal(cls,w,li,onAdded,edit,saveFn){
   };
 }
 
+/* خلط عشوائي لترتيب الخيارات (Fisher-Yates) */
+function shuffledIdx(n){
+  const a=[...Array(n).keys()];
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a;
+}
 /* عرض اختبار الدرس */
 async function renderQuiz(cls,w,li,box){
   const key=lessonKey(w,li);
+  /* ترتيب عشوائي لخيارات الاختيار من متعدد — يتجدد كلما فُتح الدرس ويثبت أثناء بقائه */
+  const shufOrders={};
+  const shufNonce=Math.floor(Math.random()*1e9);
   const paint=()=>{
     const baseRaw=(QUIZZES[cls]||{})[key]||[];
     const ovr=(QOVR[cls] && QOVR[cls].data && QOVR[cls].data[key]) || {};
@@ -41295,8 +41304,12 @@ async function renderQuiz(cls,w,li,box){
       (qs.length ? qs.map((it,qi)=>{
         const tag = it._cid!==undefined ? ` <span class="qBadge">أضافها المعلم</span><button class="qDel qEdit" data-cid="${it._cid}" title="تعديل السؤال">✏️</button><button class="qDel" data-cid="${it._cid}" title="حذف السؤال">🗑️</button>`
           : ` <button class="qDel qEditB" data-bi="${qi}" title="تعديل السؤال">✏️</button>${ovr[qi] ? '<span class="qBadge">عدّلها المعلم</span><button class="qDel qRestoreB" data-bi="'+qi+'" title="استعادة السؤال الأصلي">↩️</button>' : ''}`;
-        if(it.t==='mcq') return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
-          <div class="qChoices">${it.c.map((ch,ci)=>`<button class="qCh" data-qi="${qi}" data-ci="${ci}">${escH(ch)}</button>`).join('')}</div></div>`;
+        if(it.t==='mcq'){
+        const extO=(typeof syncState!=='undefined' && syncState.qshuf && syncState.qshuf.key===cls+':'+w+':'+li && syncState.qshuf.orders && syncState.qshuf.orders[qi] && syncState.qshuf.orders[qi].length===it.c.length) ? syncState.qshuf.orders[qi] : null;
+        const ord = extO || shufOrders[qi] || (shufOrders[qi]=shuffledIdx(it.c.length));
+        return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
+          <div class="qChoices">${ord.map(ci=>`<button class="qCh" data-qi="${qi}" data-ci="${ci}">${escH(it.c[ci])}</button>`).join('')}</div></div>`;
+      }
         return `<div class="quizQ"><div class="qText">${qi+1}) ${escH(it.q)}${tag}</div>
           <button class="pbtn2 ghost qShow" data-qi="${qi}">إظهار الإجابة</button>
           <div class="qAns" id="qAns${qi}" style="display:none">${escH(it.a)}</div></div>`;
@@ -41340,6 +41353,8 @@ async function renderQuiz(cls,w,li,box){
       try{ await deleteCustomQuestion(cls,key,b.dataset.cid); paint(); }
       catch(e){ alert('تعذر الحذف — تحقق من الاتصال.'); }
     });
+    window._qShuf={key:cls+':'+w+':'+li, orders:shufOrders, nonce:shufNonce};
+    if(typeof syncActiveFor==='function' && syncActiveFor('lpPaneQuiz',cls,w,li) && !syncState.isRemote && !(syncState.qshuf && syncState.qshuf.key===window._qShuf.key)) syncSend({k:'qshuf', orders:shufOrders, nonce:shufNonce});
     if(oldSession) box.insertBefore(oldSession, box.firstChild); /* إبقاء لوحة الجلسة في الأعلى */
   };
   paint(); /* عرض فوري (الجاهزة + الكاش) */
@@ -42063,8 +42078,9 @@ function qsRenderTurn(){
       </div>`;
   } else if(it){
     if(it.t==='mcq'){
+      const _ord=shuffledIdx(it.c.length);
       qHtml = `<div class="qsQ">${escH(it.q)}</div>
-        <div class="qChoices">${it.c.map((ch,ci)=>`<button class="qCh qsCh" data-ci="${ci}">${escH(ch)}</button>`).join('')}</div>
+        <div class="qChoices">${_ord.map(ci=>`<button class="qCh qsCh" data-ci="${ci}">${escH(it.c[ci])}</button>`).join('')}</div>
         <div class="qsMain"><button class="pbtn2" id="qsConfirm" style="font-size:1.15rem;padding:12px 34px">✅ تأكيد الإجابة</button></div>`;
     } else {
       qHtml = `<div class="qsQ">${escH(it.q)}</div>
@@ -42578,6 +42594,18 @@ function syncHandleMsg(m){
       }
     } else if(m.k==='scroll'){
       if(syncActiveFor('lpPaneBook')) lp.scrollTop = m.y;
+    } else if(m.k==='qshuf'){
+      if(!syncState.qshuf || m.nonce>syncState.qshuf.nonce){
+        syncState.qshuf={key:syncState.key, orders:m.orders, nonce:m.nonce};
+        const qbox=lp.querySelector('#lpPaneQuiz');
+        if(qbox) qbox.querySelectorAll('.quizQ').forEach((qEl,qi)=>{
+          const ord=m.orders&&m.orders[qi]; if(!ord) return;
+          const chBox=qEl.querySelector('.qChoices'); if(!chBox) return;
+          const btns=[...chBox.querySelectorAll('.qCh')]; if(btns.length!==ord.length) return;
+          const byCi={}; btns.forEach(b=>byCi[b.dataset.ci]=b);
+          ord.forEach(ci=>{ if(byCi[ci]) chBox.appendChild(byCi[ci]); });
+        });
+      }
     } else if(m.k==='ans'){
       if(syncActiveFor('lpPaneQuiz')){
         const a = lp.querySelector('#qAns'+m.qi), b = lp.querySelector('.qShow[data-qi="'+m.qi+'"]');
@@ -42616,7 +42644,7 @@ function syncUpdateBtn(){
 }
 function syncStop(){
   if(syncState.ch){ try{ sb.removeChannel(syncState.ch); }catch(e){} }
-  syncState.mode=null; syncState.tabPane=null; syncState.ch=null; syncState.key=null;
+  syncState.mode=null; syncState.tabPane=null; syncState.ch=null; syncState.key=null; syncState.qshuf=null;
   syncUpdateBtn();
 }
 function syncStart(mode, cls, w, li){
@@ -42631,6 +42659,7 @@ function syncStart(mode, cls, w, li){
   ch.on('broadcast', {event:'sync'}, ({payload})=>syncHandleMsg(payload)).subscribe();
   syncState.ch = ch;
   syncUpdateBtn();
+  setTimeout(()=>{ if(window._qShuf && window._qShuf.key===syncState.key && (syncState.mode==='full'||syncState.tabPane==='lpPaneQuiz') && !(syncState.qshuf && syncState.qshuf.key===syncState.key)) syncSend({k:'qshuf', orders:window._qShuf.orders, nonce:window._qShuf.nonce}); }, 400);
 }
 function syncToggleMenu(){
   const m = document.querySelector('#lessonPage #syncMenu');
