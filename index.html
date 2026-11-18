@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<script>
+/* تثبيت المسار الأساسي: يضمن عمل الموارد النسبية (صور الكتب books2 والخطوط fonts)
+   سواء فُتح الرابط بشرطة مائلة في النهاية أو بدونها (مثل /Smart-Classroom) */
+(function(){try{
+  var h=location.href.split('#')[0].split('?')[0];
+  var base=h.endsWith('/')?h:(/\.[a-zA-Z0-9]{2,5}$/.test(h)?h.replace(/[^\/]*$/,''):h+'/');
+  var b=document.createElement('base'); b.href=base;
+  document.head.insertBefore(b,document.head.firstChild);
+}catch(e){}})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>إدارة الصف الذكية - نمذجة التعلم</title>
