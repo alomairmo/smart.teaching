@@ -1,0 +1,33 @@
+{
+  "name": "إدارة الصف الذكية - نمذجة التعلم",
+  "short_name": "الصف الذكية",
+  "description": "إدارة الصف الذكية: المناهج والكشوف الأسبوعية والألعاب التعليمية لمجمع العماير.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8f0dc",
+  "theme_color": "#174f4d",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
