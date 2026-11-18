@@ -335,6 +335,9 @@ table.sheet th.hlCol, table.qeTbl th.hlCol{background:#f2c14e !important; color:
 
 /* صفحة الدرس: التبويبات والكتاب والاختبار */
 #lessonPage .lpPane{margin-top:14px}
+.lpFsBtn{white-space:nowrap}
+.lpShipsStage:fullscreen,.lpSnakesStage:fullscreen,.lpMilStage:fullscreen{background:#0f172a;padding:10px;overflow:auto;margin-top:0}
+.lpShipsStage:fullscreen iframe,.lpSnakesStage:fullscreen iframe,.lpMilStage:fullscreen iframe{height:calc(100vh - 64px)!important;min-height:0!important}
 .bookPg{display:block; width:100%; max-width:780px; margin:12px auto; border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); transition:transform .25s ease, box-shadow .25s ease}
 .bookPg:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg)}
 /* شريط أدوات الكتاب */
@@ -4808,6 +4811,19 @@ function subjMatch(subjName, sj){
   if(ns==='قرآنوتفسير1' || ns==='دراساتإسلامية' || ns.indexOf('دراسات')===0) return sj!=='علوم' && sj!=='كيمياء';
   return true;
 }
+/* مواد المعلم المرتبطة بمنهج محدد (من ⚙️ إعداداتي) — لتصفية الدروس وبنوك الأسئلة */
+function teacherSubjectsForCur(curKey){
+  try{
+    const out=[];
+    teacherClasses().forEach(cid=>{
+      classCandidateSubjects(cid).forEach(s=>{
+        let cell=null; try{ cell=schedCellFromSel(cid,s); }catch(e){}
+        if(cell && cell.cur===curKey && !out.includes(s)) out.push(s);
+      });
+    });
+    return out;
+  }catch(e){ return []; }
+}
 /* مواد الفصل المرشحة: المواد التي اختارها المعلم لهذا الفصل في إعداداته */
 function classCandidateSubjects(cid){
   return classSubjectsOf(cid);
@@ -5263,14 +5279,14 @@ document.getElementById('editSchedBtn').onclick = openScheduleEditor;
 /* ====== تبويبات توزيع المنهج (تتبع فصول المعلم ومواده) ====== */
 function curBlockHtml(key, subjFilter){
   const c = CURRICULA[key];
-  let h = `<div class="sub" style="margin-bottom:10px">${c.grade} — ${c.subject}${subjFilter?(' — '+subjFilter):''}</div>`;
+  let h = `<div class="sub" style="margin-bottom:10px">${c.grade} — ${c.subject}${subjFilter?(' — '+(Array.isArray(subjFilter)?subjFilter.join('، '):subjFilter)):''}</div>`;
   c.weeks.forEach(wd=>{
     const holiday = typeof wd.week!=='number';
     const exam = typeof wd.week==='number' && wd.week>=18;
     const isCur = typeof wd.week==='number' && wd.week===CUR_WEEK;
     const title = holiday ? (wd.lessons && wd.lessons[0] ? wd.lessons[0] : 'إجازة') : weekLabel(wd.week);
     let items = (wd.lessons||[]).map((l,li)=>({l,li}));
-    if(subjFilter && !holiday) items = items.filter(x=>subjMatch(subjFilter, (typeof lessonSubjectOf==='function')?lessonSubjectOf(key,wd.week,x.li,x.l):''));
+    if(subjFilter && !holiday) items = items.filter(x=>{ const _sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(key,wd.week,x.li,x.l):''; return Array.isArray(subjFilter) ? subjFilter.some(sf=>subjMatch(sf,_sj)) : subjMatch(subjFilter,_sj); });
     if(subjFilter && !holiday && !items.length) return;
     if(holiday) items = items.filter((_,idx)=>idx>0);
     h += `<div class="weekcard${exam?' exam':''}${isCur?' curWeek':''}"${holiday?' style="background:#fdf6e8"':''}>
@@ -5318,13 +5334,13 @@ function buildCurriculumSection(){
     pane.id = 'cpane-'+gi;
     const curs = []; const seenC = {};
     g.links.forEach(l=>{ if(!seenC[l.cur]){ seenC[l.cur]=1; curs.push(l.cur); } });
-    const subs = [{all:true, label:'جميع المواد'}].concat(g.links.map(l=>({all:false, label:l.subj, cur:l.cur})));
+    const subs = (g.links.length>1 ? [{all:true, label:'جميع المواد'}] : []).concat(g.links.map(l=>({all:false, label:l.subj, cur:l.cur})));
     let inner = '<div class="tabs subTabs" style="margin-bottom:12px">';
     subs.forEach((s,si)=>{ inner += `<button class="tab${si===0?' active':''}" data-sub="${si}">${s.label}</button>`; });
     inner += '</div>';
     subs.forEach((s,si)=>{
       inner += `<div class="subPane"${si===0?'':' style="display:none"'} data-sp="${si}">`;
-      if(s.all){ curs.forEach(ck=>{ inner += curBlockHtml(ck, null); }); }
+      if(s.all){ curs.forEach(ck=>{ const _cs=g.links.filter(l=>l.cur===ck).map(l=>l.subj); inner += curBlockHtml(ck, _cs.length>1?_cs:(_cs[0]||null)); }); }
       else { inner += curBlockHtml(s.cur, s.label); }
       inner += '</div>';
     });
@@ -43139,10 +43155,12 @@ function initLpClassPanes(cls, w, li, lp){
       customs=r.data||[];
     }catch(e){}
     const lessons=[], list=[];
+    const tsubs=(typeof teacherSubjectsForCur==='function')?teacherSubjectsForCur(cls):[];
     WEEKS.forEach(ww=>{
       const wd2=weekData(cls,ww);
       if(!wd2||!wd2.lessons) return;
       wd2.lessons.forEach((l2,li2)=>{
+        if(tsubs.length){ const _sj=(typeof lessonSubjectOf==='function')?lessonSubjectOf(cls,ww,li2,l2):''; if(!tsubs.some(s=>subjMatch(s,_sj))) return; }
         const key2=ww+':'+li2;
         const items=quizBase(cls,key2).concat(customs.filter(c=>c.lesson_key===key2).map(cqRowToItem));
         if(!items.length) return;
@@ -43243,6 +43261,22 @@ function initLpClassPanes(cls, w, li, lp){
       });
     }
   };
+  /* ⛶ ملء الشاشة لمراحل الألعاب الثلاث */
+  lp.querySelectorAll('.lpFsBtn').forEach(b=>{
+    b.onclick=()=>{
+      const st=lp.querySelector('.'+b.dataset.fs);
+      if(!st) return;
+      if(document.fullscreenElement){ if(document.exitFullscreen) document.exitFullscreen(); }
+      else if(st.requestFullscreen){ st.requestFullscreen(); }
+    };
+  });
+  if(!window._lpFsBound){
+    window._lpFsBound=true;
+    document.addEventListener('fullscreenchange',()=>{
+      const fs=!!document.fullscreenElement;
+      document.querySelectorAll('.lpFsBtn').forEach(x=>{ x.textContent = fs ? '🗗 تصغير الشاشة' : '⛶ ملء الشاشة'; });
+    });
+  }
   /* عرض مبدئي على الأسبوع الحالي */
   renderLpSheet(cls, sSel.value==='avg'?'avg':+sSel.value, sPane);
   renderLpGroups(cls, +gSel.value, gPane);
@@ -43382,6 +43416,7 @@ function openLessonPage(cls,w,li){
       <div class="lpShipsStage" style="display:none;margin-top:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لتبويب الكتاب أو أي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpFsBtn" data-fs="lpShipsStage">⛶ ملء الشاشة</button>
           <button class="pbtn2 ghost lpShipsBack">⚙️ إعدادات اللعبة</button>
         </div>
       </div>
@@ -43399,6 +43434,7 @@ function openLessonPage(cls,w,li){
       <div class="lpSnakesStage" style="display:none;margin-top:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لأي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpFsBtn" data-fs="lpSnakesStage">⛶ ملء الشاشة</button>
           <button class="pbtn2 ghost lpSnakesBack">⚙️ شاشة البداية</button>
         </div>
       </div>
@@ -43416,6 +43452,7 @@ function openLessonPage(cls,w,li){
       <div class="lpMilStage" style="display:none;margin-top:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="note" style="margin:0">اللعبة تعمل الآن — يمكنك الانتقال لأي تبويب آخر والعودة إليها دون إعادة تشغيلها.</span>
+          <button class="pbtn2 ghost lpFsBtn" data-fs="lpMilStage">⛶ ملء الشاشة</button>
           <button class="pbtn2 ghost lpMilBack">⚙️ شاشة البداية</button>
         </div>
       </div>
