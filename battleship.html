@@ -586,6 +586,7 @@
         const URLP = new URLSearchParams(location.search);
         const G_CLS = URLP.get('cls') || 'g5';
         const G_W = Math.max(1, parseInt(URLP.get('w') || '1') || 1);
+        const G_U = URLP.get('u') || ''; const UK = k => (G_U ? G_U+':' : '') + k;
         function mkShip(i, name, gid, pts){
             return { id:i, gid:String(gid), name:name, color:SHIP_COLORS[i%SHIP_COLORS.length][0], hex:SHIP_COLORS[i%SHIP_COLORS.length][1],
                 health:(pts!==undefined?pts:20), energy:0, isDead:false, mesh:null, labelEl:null, gridX:0, gridY:0,
@@ -595,10 +596,10 @@
             let defs=[];
             const pts={};
             try{
-                const r1 = await sbc.from('marks').select('*').eq('class_key','grpdef:'+G_CLS).eq('week',0);
+                const r1 = await sbc.from('marks').select('*').eq('class_key',UK('grpdef:'+G_CLS)).eq('week',0);
                 if(!r1.error && r1.data && r1.data.length){ try{ defs=JSON.parse(r1.data[0].value); }catch(e){} }
-                const r2 = await sbc.from('marks').select('*').like('class_key','grp:'+G_CLS+':%').eq('week',G_W).eq('criterion_idx',0);
-                if(!r2.error && r2.data) r2.data.forEach(r=>{ const gid=r.class_key.split(':')[2]; const v=parseFloat(r.value); pts[gid]=isNaN(v)?20:v; });
+                const r2 = await sbc.from('marks').select('*').like('class_key',UK('grp:'+G_CLS)+':%').eq('week',G_W).eq('criterion_idx',0);
+                if(!r2.error && r2.data) r2.data.forEach(r=>{ const gid=r.class_key.split(':').pop(); const v=parseFloat(r.value); pts[gid]=isNaN(v)?20:v; });
             }catch(e){}
             if(!defs.length) defs=[1,2,3,4].map(i=>({id:i,name:'المجموعة '+i}));
             shipsData = defs.slice(0,8).map((d,i)=>mkShip(i, d.name, d.id, pts[String(d.id)]));
@@ -617,7 +618,7 @@
             if(!ship || ship.gid===undefined) return;
             ship._synced = ship.health;
             try{
-                await sbc.from('marks').upsert({class_key:'grp:'+G_CLS+':'+ship.gid, week:G_W, student_idx:0, criterion_idx:0,
+                await sbc.from('marks').upsert({class_key:UK('grp:'+G_CLS+':'+ship.gid), week:G_W, student_idx:0, criterion_idx:0,
                     value:String(ship.health), updated_at:new Date().toISOString()});
             }catch(e){}
         }

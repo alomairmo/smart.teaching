@@ -165,6 +165,7 @@
 /* ================= السلم والثعبان — الغابة ================= */
 const P=new URLSearchParams(location.search);
 const G_CLS=P.get('cls')||'g4', G_W=+(P.get('w')||1);
+const G_U=P.get('u')||''; const UK=k=>(G_U?G_U+':':'')+k;
 const SB_URL="https://lazyikoawttfcflpdixs.supabase.co", SB_KEY="sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI";
 const sbc=supabase.createClient(SB_URL,SB_KEY);
 
@@ -208,15 +209,15 @@ $('setN').oninput=()=>{ const n=+$('setN').value||10; $('nHint').textContent=`${
 /* ---------- تحميل المجموعات ونقاطها ---------- */
 async function loadGroups(){
   try{
-    const r=await sbc.from('marks').select('value').eq('class_key','grpdef:'+G_CLS).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    const r=await sbc.from('marks').select('value').eq('class_key',UK('grpdef:'+G_CLS)).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
     const defs=(r.data&&r.data[0])?JSON.parse(r.data[0].value):[];
     GROUPS=defs.map((d,i)=>({id:d.id, name:'المجموعة '+d.name, color:GROUP_COLORS[i%GROUP_COLORS.length], pos:1, maxSq:0, earned:0, mesh:null}));
   }catch(e){}
   if(!GROUPS.length) GROUPS=[1,2,3,4].map(i=>({id:i,name:'المجموعة '+i,color:GROUP_COLORS[(i-1)%8],pos:1,maxSq:0,earned:0,mesh:null}));
   try{
-    const r2=await sbc.from('marks').select('class_key,value').like('class_key','grp:'+G_CLS+':%').eq('week',G_W).eq('criterion_idx',0);
+    const r2=await sbc.from('marks').select('class_key,value').like('class_key',UK('grp:'+G_CLS)+':%').eq('week',G_W).eq('criterion_idx',0);
     (r2.data||[]).forEach(row=>{
-      const gid=+row.class_key.split(':')[2];
+      const gid=+row.class_key.split(':').pop();
       const g=GROUPS.find(x=>x.id===gid);
       if(g) g.weekPts=+row.value||0;
     });
@@ -225,7 +226,7 @@ async function loadGroups(){
 }
 async function pushGroupPoints(g){
   try{
-    await sbc.from('marks').upsert({class_key:'grp:'+G_CLS+':'+g.id, week:G_W, student_idx:0, criterion_idx:0,
+    await sbc.from('marks').upsert({class_key:UK('grp:'+G_CLS+':'+g.id), week:G_W, student_idx:0, criterion_idx:0,
       value:String(g.weekPts), updated_at:new Date().toISOString()});
   }catch(e){}
 }

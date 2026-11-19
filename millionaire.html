@@ -407,6 +407,7 @@
 const MIL_P = new URLSearchParams(location.search);
 const MIL_CLS = MIL_P.get('cls') || 'g4';
 const MIL_W = +(MIL_P.get('w') || 1);
+const MIL_U = MIL_P.get('u') || ''; const MIL_UK = k => (MIL_U ? MIL_U+':' : '') + k;
 const MIL_SBC = supabase.createClient("https://lazyikoawttfcflpdixs.supabase.co", "sb_publishable_RNdKa5FTqDB4KAPSpYP4lg_jIcwVjVI");
 let MIL_LESSONS = [], MIL_BANK = [], MIL_STUDENTS = [], MIL_GROUPS = [];
 const milCfg = { mode:'groups', src:'builtin', qtype:'both', lessons:null };
@@ -502,7 +503,7 @@ document.getElementById('milStartBtn').onclick = ()=>{
 /* ---------- أدوات الحفظ في كشف المجموعات ---------- */
 async function milPushGroup(g){
   try{
-    await MIL_SBC.from('marks').upsert({ class_key:'grp:'+MIL_CLS+':'+g.id, week:MIL_W, student_idx:0, criterion_idx:0,
+    await MIL_SBC.from('marks').upsert({ class_key:MIL_UK('grp:'+MIL_CLS+':'+g.id), week:MIL_W, student_idx:0, criterion_idx:0,
       value:String(g.weekPts), updated_at:new Date().toISOString() });
   }catch(e){}
 }

@@ -921,7 +921,8 @@ setTimeout(()=>{ if(typeof flushPendingWrites==='function') flushPendingWrites()
 const marksCache = {};   // cls -> { loaded:bool, data:{week:{si:{ci:v}}} }
 async function fetchClassMarks(cls){
   if(marksCache[cls] && marksCache[cls].loaded) return;
-  const { data, error } = await sb.from('marks').select('*').eq('class_key', cls);
+  if(!APP_READY){ marksCache[cls]={loaded:true,data:{}}; return; } /* قبل اكتمال الدخول: لا قراءة شبكية إطلاقًا */
+  const { data, error } = await sb.from('marks').select('*').eq('class_key', ukey(cls));
   const store = {};
   if(!error && data){
     data.forEach(r=>{
@@ -995,7 +996,7 @@ function showOfflineModal(fromBadge){
 window.addEventListener('online',()=>{ flushPendingWrites().then(ok=>{ if(ok) hideOfflineModal(); }); });
 
 async function pushMark(cls,w,si,ci,v){
-  const row={class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
+  const row={class_key:ukey(cls), week:w, student_idx:si, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
   try{
     const res=await sb.from('marks').upsert(row);
     if(res && res.error) throw res.error;
@@ -1027,7 +1028,7 @@ function applyRoster(cls){
 }
 async function saveRoster(cls){
   const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
-  const row={class_key:'rosterx:'+cls, week:0, student_idx:0, criterion_idx:0,
+  const row={class_key:ukey('rosterx:'+cls), week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify(rx), updated_at:new Date().toISOString()};
   try{
     const res=await sb.from('marks').upsert(row);
@@ -1042,12 +1043,13 @@ async function saveRoster(cls){
 async function fetchExtraStudents(cls){
   if(extraLoaded[cls]) return;
   extraLoaded[cls]=true;
-  if(!BASE_STUDENTS[cls]) BASE_STUDENTS[cls]=ROSTERS[cls].students.slice();
-  const { data, error } = await sb.from('marks').select('*').eq('class_key','rosterx:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
+  if(!APP_READY) return; /* قبل اكتمال الدخول: الروستر الثابت يبقى كما هو خلف بوابة الدخول */
+  BASE_STUDENTS[cls] = isLegacyOwner() ? (STATIC_ROSTER[cls]||ROSTERS[cls].students).slice() : [];
+  const { data, error } = await sb.from('marks').select('*').eq('class_key',ukey('rosterx:'+cls)).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
   if(!error && data && data.length){
     ROSTERX[cls] = parseRosterX(data[0].value);
-    applyRoster(cls);
   }
+  applyRoster(cls); /* دائمًا — حتى بلا صف محفوظ، ليصبح روستر غير المالك فارغًا */
 }
 /* تنبيه منبثق سريع */
 function showToast(msg){
@@ -1060,6 +1062,7 @@ function showToast(msg){
 
 /* ====== تسجيل الدخول والحسابات ====== */
 var CURRENT_USER = null;   // اسم المستخدم الحالي بعد الدخول
+var APP_READY = false;     // تصبح true بعد اكتمال الدخول والترحيل — تمنع أي إعادة بناء مبكرة
 var TEACHER_SET = null;    // {classes:[...], subjects:[...]} إعدادات المعلم
 /* الحسابات تُخزَّن في قاعدة البيانات: class_key='accts' (week=0, si=0, ci=0, value=JSON {users:[{u,p}]}) */
 let ACCTS = null;
@@ -1121,6 +1124,61 @@ async function saveTset(){
   await sb.from('marks').upsert({class_key:'tset:'+CURRENT_USER, week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify(TEACHER_SET), updated_at:new Date().toISOString()});
 }
+/* مسح كاشات الجلسة عند فتح الحساب (تُلغي أي بيانات جُلبت قبل تسجيل الدخول بالمفاتيح القديمة) */
+function resetUserCaches(){
+  [marksCache, groupsCache, sptsCache, SHEET_CFG, ROSTERX, extraLoaded, BASE_STUDENTS, QOVR, CUSTOMQ, TERM_CFG, TERM_VALS,
+   (typeof SPTCFG!=='undefined'?SPTCFG:null), (typeof annLocal!=='undefined'?annLocal:null)].forEach(o=>{
+    if(o) Object.keys(o).forEach(k=>delete o[k]);
+  });
+  Object.keys(STATIC_ROSTER).forEach(k=>{ ROSTERS[k].students = STATIC_ROSTER[k].slice(); });
+}
+/* ترحيل لمرة واحدة لبيانات المعلم الأصلي من المفاتيح المشتركة القديمة إلى مفاتيحه الخاصة
+   (نسخ فقط عبر upsert/insert — لا يُحذف أي صف قديم إطلاقًا) */
+async function migrateLegacyData(){
+  if(!isLegacyOwner()) return;
+  const flag='migv1:'+CURRENT_USER;
+  try{ if(localStorage.getItem(flag)==='1') return; }catch(e){}
+  for(const cls of Object.keys(CURRICULA)){
+    try{
+      const ex = await sb.from('marks').select('class_key').eq('class_key',ukey(cls)).limit(1);
+      if(ex.data && ex.data.length) continue; /* سبق ترحيل هذا الفصل */
+      const fixed=[cls,'rosterx:'+cls,'grpdef:'+cls,'spt:'+cls,'sptcfg:'+cls,'qovr:'+cls,
+        'termcfg:'+cls+':t1','termcfg:'+cls+':t2','termv:'+cls+':t1','termv:'+cls+':t2'];
+      const r1=await sb.from('marks').select('*').in('class_key',fixed);
+      const r2=await sb.from('marks').select('*').like('class_key','grp:'+cls+':%');
+      const rows=[...(r1.data||[]),...(r2.data||[])];
+      /* أعمدة الكشف: تُرحَّل فقط إن كانت سليمة (بها أعمدة القرآن) — وإلا يستعيد المعلم الأعمدة الافتراضية الكاملة */
+      const r3=await sb.from('marks').select('*').eq('class_key','sheetcfg:'+cls).eq('week',0);
+      if(r3.data && r3.data.length){
+        try{
+          const v=JSON.parse(r3.data[0].value);
+          if(v && Array.isArray(v.cols) && v.cols.some(c=>String(c.n).includes('قرآن'))) rows.push(r3.data[0]);
+        }catch(e){}
+      }
+      if(rows.length){
+        const mapped=rows.map(x=>({class_key:ukey(x.class_key), week:x.week, student_idx:x.student_idx,
+          criterion_idx:x.criterion_idx, value:String(x.value), updated_at:new Date().toISOString()}));
+        for(let i=0;i<mapped.length;i+=400) await sb.from('marks').upsert(mapped.slice(i,i+400));
+      }
+      /* أسئلة المعلم المخصصة */
+      const cqEx=await sb.from('custom_questions').select('id').eq('class_key',ukey(cls)).limit(1);
+      if(!(cqEx.data && cqEx.data.length)){
+        const cq=await sb.from('custom_questions').select('lesson_key,qtype,q,choices,answer').eq('class_key',cls);
+        if(cq.data && cq.data.length)
+          await sb.from('custom_questions').insert(cq.data.map(x=>({lesson_key:x.lesson_key, class_key:ukey(cls), qtype:x.qtype, q:x.q, choices:x.choices, answer:x.answer})));
+      }
+      /* الكتابة على صفحات الكتب (التعليقات) */
+      const anEx=await sb.from('annotations').select('class_key').eq('class_key',ukey(cls)).limit(1);
+      if(!(anEx.data && anEx.data.length)){
+        const an=await sb.from('annotations').select('page,data').eq('class_key',cls);
+        if(an.data && an.data.length)
+          await sb.from('annotations').upsert(an.data.map(x=>({class_key:ukey(cls), page:x.page, data:x.data, updated_at:new Date().toISOString()})), {onConflict:'class_key,page'});
+      }
+    }catch(e){ console.warn('migrate class', cls, e); }
+  }
+  try{ localStorage.setItem(flag,'1'); }catch(e){}
+}
+
 (function initLogin(){
   const gate=document.getElementById('loginGate');
   const wrap=document.getElementById('mainWrap');
@@ -1147,7 +1205,10 @@ async function saveTset(){
     }catch(e){}
     /* تحميل بيانات الحساب: إعداداته وجدوله وتقدم دروسه (لكل حساب بيانات مستقلة) */
     await fetchTset();
+    resetUserCaches();                       /* إسقاط أي بيانات جُلبت قبل الدخول بالمفاتيح المشتركة */
+    try{ await migrateLegacyData(); }catch(e){ console.warn('migrate', e); }
     try{ await fetchSchedule(); }catch(e){}
+    APP_READY = true; /* اكتملت الإعدادات والترحيل — يُسمح الآن بإعادة بناء العروض */
     try{ rebuildTeacherViews(); }catch(e){}
     try{
       for(const k of visibleCurKeys()){ await fetchLessonsDone(k); }
@@ -4958,6 +5019,14 @@ function teacherSubjectsForCur(curKey){
 function classCandidateSubjects(cid){
   return classSubjectsOf(cid);
 }
+/* ====== عزل بيانات كل معلم: كل مفاتيح التخزين الخاصة تُسبق باسم المستخدم ======
+   مفاتيح عالمية تبقى كما هي: accts وnmtuser: (سجل حسابات المنصة) — وما عداها خاص بكل معلم */
+const STATIC_ROSTER = {};
+Object.keys(ROSTERS).forEach(k=>{ STATIC_ROSTER[k]=ROSTERS[k].students.slice(); });
+const LEGACY_OWNERS = ['محمد صالح','teacher']; /* أصحاب البيانات المتراكمة بالمفاتيح القديمة المشتركة */
+function isLegacyOwner(){ return (typeof CURRENT_USER!=='undefined') && LEGACY_OWNERS.includes(CURRENT_USER); }
+function ukey(k){ return (typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER+':'+k : k; }
+
 /* مفاتيح المناهج المرتبطة بفصول المعلم ومواده (من ⚙️ إعداداتي) */
 function visibleCurKeys(){
   let classes;
@@ -4978,8 +5047,9 @@ function colName(cls,ci){ const c=colsOf(cls)[ci]; return c ? c.n : ('معيار
 function colMax(cls,ci){ const c=colsOf(cls)[ci]; return c ? (+c.max||5) : 5; }
 function colDef(cls,ci){ const c=colsOf(cls)[ci]; return c ? c.def : 5; }
 async function fetchSheetCfg(cls){
+  if(!APP_READY){ SHEET_CFG[cls]={loaded:true,cols:null}; return; }
   try{
-    const r = await sb.from('marks').select('*').eq('class_key','sheetcfg:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    const r = await sb.from('marks').select('*').eq('class_key',ukey('sheetcfg:'+cls)).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
     if(!r.error && r.data && r.data.length){
       const v = JSON.parse(r.data[0].value);
       if(v && Array.isArray(v.cols) && v.cols.length){ SHEET_CFG[cls]={loaded:true,cols:v.cols}; return; }
@@ -4988,7 +5058,7 @@ async function fetchSheetCfg(cls){
   SHEET_CFG[cls]={loaded:true,cols:null};
 }
 async function saveSheetCfg(cls){
-  await sb.from('marks').upsert({class_key:'sheetcfg:'+cls, week:0, student_idx:0, criterion_idx:0,
+  await sb.from('marks').upsert({class_key:ukey('sheetcfg:'+cls), week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify({cols:SHEET_CFG[cls].cols}), updated_at:new Date().toISOString()});
 }
 
@@ -5004,7 +5074,7 @@ async function remapMarksAfterColDelete(cls, mapping, newCount){
         Object.keys(row).forEach(ci=>{
           const m=mapping[+ci];
           if(m===undefined || m===null) return; /* عمود محذوف — تُسقط درجاته */
-          if(m!==+ci) rows.push({class_key:cls, week:+w, student_idx:+si, criterion_idx:m, value:String(row[ci]), updated_at:new Date().toISOString()});
+          if(m!==+ci) rows.push({class_key:ukey(cls), week:+w, student_idx:+si, criterion_idx:m, value:String(row[ci]), updated_at:new Date().toISOString()});
           nr[m]=row[ci];
         });
         store[w][si]=nr;
@@ -5016,7 +5086,7 @@ async function remapMarksAfterColDelete(cls, mapping, newCount){
     if(res && res.error) throw res.error;
   }
   /* حذف الصفوف التي أصبح رقم معيارها خارج نطاق الأعمدة الجديد (بقايا الترقيم القديم) */
-  const del=await sb.from('marks').delete().eq('class_key',cls).gte('criterion_idx',newCount);
+  const del=await sb.from('marks').delete().eq('class_key',ukey(cls)).gte('criterion_idx',newCount);
   if(del && del.error) throw del.error;
   flushPendingWrites();
 }
@@ -5684,7 +5754,7 @@ async function fillColumn(cls,w,ci,mode,refresh,msgEl){
           nv=Math.max(0,Math.min(7, markNum(cur)+(+v||0)));
         }
         store[w][si][ci]=nv;
-        rows.push({class_key:cls, week:w, student_idx:si, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
+        rows.push({class_key:ukey(cls), week:w, student_idx:si, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
         if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,si,ci);
       }
       (refresh||renderSheet)(); /* تحديث فوري للكشف المعروض */
@@ -5734,7 +5804,7 @@ async function fillRow(cls,w,target,mode,refresh,msgEl){
           nv=Math.max(0,Math.min(7, markNum(cur)+(+v||0)));
         }
         store[w][target][ci]=nv;
-        rows.push({class_key:cls, week:w, student_idx:target, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
+        rows.push({class_key:ukey(cls), week:w, student_idx:target, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
         if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,target,ci);
       }
       (refresh||renderSheet)(); /* تحديث فوري للكشف المعروض */
@@ -5875,7 +5945,7 @@ function renderQuickEntry(cls, w){
           nv=Math.max(0,Math.min(7, markNum(cur)+(+v||0)));
         }
         store[w][ti][ci]=nv;
-        rows.push({class_key:cls, week:w, student_idx:ti, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
+        rows.push({class_key:ukey(cls), week:w, student_idx:ti, criterion_idx:ci, value:String(nv), updated_at:new Date().toISOString()});
         if(typeof syncGroupFromStudent==='function') syncGroupFromStudent(cls,w,ti,ci);
       });
     });
@@ -5914,11 +5984,12 @@ async function renderSheet(){
   const w = __sv==='avg' ? 'avg' : +__sv;
   if(!(marksCache[cls] && marksCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
-    await fetchClassMarks(cls);
-    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
-    await fetchExtraStudents(cls);
-    if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   }
+  /* كل جالب يتحقق من كاشه بنفسه — لا يُتخطّى أيٌّ منها حتى لو سبقه عرض آخر */
+  await fetchClassMarks(cls);
+  await fetchGroups(cls);
+  await fetchExtraStudents(cls);
+  await fetchSheetCfg(cls);
   const students = ROSTERS[cls].students;
 
   // تواريخ الأسبوع
@@ -6052,11 +6123,12 @@ async function fetchTermData(cls,term){
   const k=termKey(cls,term);
   if(TERM_CFG[k]) return;
   TERM_CFG[k]=termCfgDef(); TERM_VALS[k]={};
+  if(!APP_READY) return;
   try{
-    const r=await sb.from('marks').select('class_key,value').in('class_key',['termcfg:'+k,'termv:'+k]).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
+    const r=await sb.from('marks').select('class_key,value').in('class_key',[ukey('termcfg:'+k),ukey('termv:'+k)]).eq('week',0).eq('student_idx',0).eq('criterion_idx',0);
     (r.data||[]).forEach(row=>{
       try{
-        if(row.class_key==='termcfg:'+k){
+        if(row.class_key===ukey('termcfg:'+k)){
           const v=JSON.parse(row.value);
           if(v && Array.isArray(v.mains) && v.mains.length===2){
             v.mains.forEach((m,i)=>{
@@ -6076,7 +6148,7 @@ async function fetchTermData(cls,term){
 }
 async function saveTermCfg(cls,term){
   const k=termKey(cls,term);
-  await sb.from('marks').upsert({class_key:'termcfg:'+k, week:0, student_idx:0, criterion_idx:0,
+  await sb.from('marks').upsert({class_key:ukey('termcfg:'+k), week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify(TERM_CFG[k]), updated_at:new Date().toISOString()});
 }
 let termSaveT=null;
@@ -6087,7 +6159,7 @@ function saveTermVals(cls,term){
   clearTimeout(termSaveT);
   termSaveT=setTimeout(async ()=>{
     try{
-      await sb.from('marks').upsert({class_key:'termv:'+k, week:0, student_idx:0, criterion_idx:0,
+      await sb.from('marks').upsert({class_key:ukey('termv:'+k), week:0, student_idx:0, criterion_idx:0,
         value:JSON.stringify(TERM_VALS[k]), updated_at:new Date().toISOString()});
       if(msg) msg.textContent='تم الحفظ في قاعدة البيانات ✓';
     }catch(e){ if(msg) msg.textContent='تعذّر الرفع للخادم — سُجّلت محليًا وستُرفع تلقائيًا عند عودة الاتصال'; }
@@ -6128,9 +6200,10 @@ async function renderTermSheet(cls,term){
   document.getElementById('sheetWeekDates').textContent = (term==='t1'?'درجات الفترة الأولى':'درجات الفترة الثانية');
   if(!(marksCache[cls] && marksCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
-    await fetchClassMarks(cls);
-    if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   }
+  await fetchClassMarks(cls);
+  await fetchExtraStudents(cls);
+  await fetchSheetCfg(cls);
   await fetchTermData(cls,term);
   const cfg=TERM_CFG[termKey(cls,term)];
   const students=ROSTERS[cls].students;
@@ -6357,15 +6430,17 @@ groupWeekSel.addEventListener('change', renderGroups);
    الدرجات:   class_key='grp:<cls>:<gid>' (week, si=0, ci) */
 async function fetchGroups(cls){
   if(groupsCache[cls] && groupsCache[cls].loaded) return;
+  if(!APP_READY){ groupsCache[cls]={loaded:true,defs:[],marks:{}}; return; }
   const defs=[], marks={};
-  const r1 = await sb.from('marks').select('*').eq('class_key','grpdef:'+cls).eq('week',0);
+  const r1 = await sb.from('marks').select('*').eq('class_key',ukey('grpdef:'+cls)).eq('week',0);
   if(!r1.error && r1.data && r1.data.length){
     try{ defs.push(...JSON.parse(r1.data[0].value)); }catch(e){}
   }
-  const r2 = await sb.from('marks').select('*').like('class_key','grp:'+cls+':%');
+  const r2 = await sb.from('marks').select('*').like('class_key',ukey('grp:'+cls)+':%');
   if(!r2.error && r2.data){
     r2.data.forEach(r=>{
-      const gid = r.class_key.split(':')[2];
+      const __gp = ukey('grp:'+cls+':');
+      const gid = r.class_key.startsWith(__gp) ? r.class_key.slice(__gp.length) : r.class_key.split(':').pop();
       if(!marks[r.week]) marks[r.week]={};
       if(!marks[r.week][gid]) marks[r.week][gid]={};
       let v=r.value; if(v!=='غ'){ const n=parseFloat(v); v=isNaN(n)?5:n; }
@@ -6375,11 +6450,11 @@ async function fetchGroups(cls){
   groupsCache[cls] = { loaded:true, defs, marks };
 }
 async function saveGroupDefs(cls){
-  await sb.from('marks').upsert({class_key:'grpdef:'+cls, week:0, student_idx:0, criterion_idx:0,
+  await sb.from('marks').upsert({class_key:ukey('grpdef:'+cls), week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify(groupsCache[cls].defs), updated_at:new Date().toISOString()});
 }
 async function pushGroupMark(cls,gid,w,ci,v){
-  const row={class_key:'grp:'+cls+':'+gid, week:w, student_idx:0, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
+  const row={class_key:ukey('grp:'+cls+':'+gid), week:w, student_idx:0, criterion_idx:ci, value:String(v), updated_at:new Date().toISOString()};
   try{
     const res=await sb.from('marks').upsert(row);
     if(res && res.error) throw res.error;
@@ -6712,8 +6787,9 @@ function sptsStep(){
 
 async function fetchStuPoints(cls){
   if(sptsCache[cls] && sptsCache[cls].loaded) return;
+  if(!APP_READY){ sptsCache[cls]={loaded:true,marks:{}}; return; }
   const marks = {};
-  const r = await sb.from('marks').select('*').eq('class_key','spt:'+cls).eq('criterion_idx',0);
+  const r = await sb.from('marks').select('*').eq('class_key',ukey('spt:'+cls)).eq('criterion_idx',0);
   if(!r.error && r.data){
     r.data.forEach(row=>{
       const n = parseFloat(row.value);
@@ -6730,13 +6806,14 @@ function getStuPoints(cls,si,w){
   return wk[si]!==undefined ? wk[si] : 20;
 }
 /* ====== إعدادات نقاط الطلاب لكل فصل: تفعيل عمود درجات الأسبوع وعمود نقاط الطلاب داخل المجموعات ====== */
-/* التخزين: class_key='sptcfg:<cls>' — مشتركة لكل من يدرّس نفس الفصل والمادة */
+/* التخزين: class_key=ukey('sptcfg:<cls>') — خاصة بكل معلم على حدة (معزولة تمامًا) */
 const SPTCFG = {};   // cls -> {loaded:bool, useGrades:bool, grpStuPts:bool}
 async function fetchSptCfg(cls){
   if(SPTCFG[cls] && SPTCFG[cls].loaded) return SPTCFG[cls];
+  if(!APP_READY){ SPTCFG[cls]={loaded:true,useGrades:false,grpStuPts:true}; return SPTCFG[cls]; }
   const cfg = {loaded:true, useGrades:false, grpStuPts:true};
   try{
-    const r = await sb.from('marks').select('*').eq('class_key','sptcfg:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    const r = await sb.from('marks').select('*').eq('class_key',ukey('sptcfg:'+cls)).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
     if(!r.error && r.data && r.data.length){
       const v = JSON.parse(r.data[0].value);
       if(v){ cfg.useGrades = !!v.useGrades; cfg.grpStuPts = v.grpStuPts!==false; }
@@ -6747,7 +6824,7 @@ async function fetchSptCfg(cls){
 async function saveSptCfg(cls){
   const cfg = SPTCFG[cls] || {useGrades:false, grpStuPts:true};
   try{
-    await sb.from('marks').upsert({class_key:'sptcfg:'+cls, week:0, student_idx:0, criterion_idx:0,
+    await sb.from('marks').upsert({class_key:ukey('sptcfg:'+cls), week:0, student_idx:0, criterion_idx:0,
       value:JSON.stringify({useGrades:!!cfg.useGrades, grpStuPts:cfg.grpStuPts!==false}), updated_at:new Date().toISOString()});
   }catch(e){}
 }
@@ -6778,7 +6855,7 @@ async function setStuPoints(cls,si,w,v){
   if(!c.marks[w]) c.marks[w]={};
   c.marks[w][si]=v;
   await sb.from('marks').upsert({
-    class_key:'spt:'+cls, week:w, student_idx:si, criterion_idx:0,
+    class_key:ukey('spt:'+cls), week:w, student_idx:si, criterion_idx:0,
     value:String(v), updated_at:new Date().toISOString()
   });
 }
@@ -41192,7 +41269,7 @@ function buildLessonTabs(){
 }
 buildLessonTabs();
 /* بناء أولي لكل العروض التابعة لإعدادات المعلم بعد اكتمال تحميل الصفحة كلها */
-window.addEventListener('load', ()=>{ try{ rebuildTeacherViews(); }catch(e){} });
+window.addEventListener('load', ()=>{ try{ if(APP_READY) rebuildTeacherViews(); }catch(e){} });
 
 async function renderLessons(){
   const cls = curLesson;
@@ -41612,12 +41689,13 @@ function cqList(cls,key){ return (CUSTOMQ[cls]||{})[key] || []; }
 async function fetchCustomQuestions(cls,key){
   if(!CUSTOMQ[cls]) CUSTOMQ[cls]={};
   if(CUSTOMQ[cls][key]) return CUSTOMQ[cls][key];           /* كاش الجلسة */
+  if(!APP_READY){ CUSTOMQ[cls][key]=[]; return CUSTOMQ[cls][key]; }
   const tag = cls+':'+key;
   if(CUSTOMQ_LOADING[tag]) return CUSTOMQ_LOADING[tag];
   CUSTOMQ_LOADING[tag] = (async()=>{
     try{
       const r = await sb.from('custom_questions').select('id,qtype,q,choices,answer')
-        .eq('class_key',cls).eq('lesson_key',key).order('id');
+        .eq('class_key',ukey(cls)).eq('lesson_key',key).order('id');
       CUSTOMQ[cls][key] = (!r.error && r.data) ? r.data.map(cqRowToItem) : [];
     }catch(e){ CUSTOMQ[cls][key]=[]; }
     CUSTOMQ_LOADING[tag]=null;
@@ -41627,7 +41705,7 @@ async function fetchCustomQuestions(cls,key){
 }
 async function addCustomQuestion(cls,key,item){
   const r = await sb.from('custom_questions').insert({
-    class_key:cls, lesson_key:key, qtype:item.t, q:item.q,
+    class_key:ukey(cls), lesson_key:key, qtype:item.t, q:item.q,
     choices:item.t==='mcq'?item.c:null, answer:item.a
   }).select('id').single();
   if(r.error) throw r.error;
@@ -41659,8 +41737,9 @@ async function deleteCustomQuestion(cls,key,cid){
 const QOVR = {}; // cls -> {loaded:bool, data:{"w:li":{"bi":item}}}
 async function fetchQOverrides(cls){
   if(QOVR[cls] && QOVR[cls].loaded) return;
+  if(!APP_READY){ QOVR[cls]={loaded:true,data:{}}; return; }
   try{
-    const r = await sb.from('marks').select('*').eq('class_key','qovr:'+cls).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
+    const r = await sb.from('marks').select('*').eq('class_key',ukey('qovr:'+cls)).eq('week',0).eq('student_idx',0).eq('criterion_idx',0).limit(1);
     if(!r.error && r.data && r.data.length){
       const v = JSON.parse(r.data[0].value);
       QOVR[cls]={loaded:true, data:(v && typeof v==='object')?v:{}};
@@ -41670,7 +41749,7 @@ async function fetchQOverrides(cls){
   QOVR[cls]={loaded:true, data:{}};
 }
 async function saveQOverrides(cls){
-  await sb.from('marks').upsert({class_key:'qovr:'+cls, week:0, student_idx:0, criterion_idx:0,
+  await sb.from('marks').upsert({class_key:ukey('qovr:'+cls), week:0, student_idx:0, criterion_idx:0,
     value:JSON.stringify(QOVR[cls].data), updated_at:new Date().toISOString()});
 }
 function qovrItem(item){
@@ -42813,7 +42892,7 @@ async function wsOpenModal(cls,w,li){
 /* ====== تبويب الكتاب: تكبير + رسم مع حفظ سحابي ====== */
 const annLocal = {};   // pageKey -> [strokes]
 function annPageKey(src){ const m = src.match(/p(\d+)\.jpg/); return m ? 'p'+m[1] : src; }
-function annLocalKey(cls,page){ return 'ann_' + cls + '_' + page; }
+function annLocalKey(cls,page){ return 'ann_' + ukey(cls) + '_' + page; }
 
 function annStrokeStyle(s){
   if(s.t==='erase') return {op:'destination-out', alpha:1, col:'#000', w:s.w||30};
@@ -42845,7 +42924,7 @@ function annSave(cls,page,strokes){
   try{ localStorage.setItem(annLocalKey(cls,page), JSON.stringify(strokes)); }catch(e){}
   annLocal[cls+':'+page] = strokes;
   sb.from('annotations').upsert(
-    {class_key: cls, page: page, data: strokes, updated_at: new Date().toISOString()},
+    {class_key: ukey(cls), page: page, data: strokes, updated_at: new Date().toISOString()},
     {onConflict: 'class_key,page'}
   ).then(({error})=>{ if(error) console.warn('annotations save', error); });
 }
@@ -42859,7 +42938,8 @@ function annLoad(cls, pages){
     }catch(e){}
   });
   /* ثم السحابة (أحدث نسخة) */
-  return sb.from('annotations').select('page,data').eq('class_key', cls).in('page', pages)
+  if(!APP_READY) return Promise.resolve();
+  return sb.from('annotations').select('page,data').eq('class_key', ukey(cls)).in('page', pages)
     .then(({data,error})=>{
       if(error || !data) return;
       data.forEach(r=>{
@@ -43130,7 +43210,7 @@ function syncStart(mode, cls, w, li){
     const act = document.querySelector('#lessonPage #lpTabs .tab.active');
     syncState.tabPane = act ? act.dataset.pane : null;
   }
-  const ch = sb.channel('lesson-sync:'+syncState.key);
+  const ch = sb.channel('lesson-sync:'+ukey(cls)+':'+w+':'+li);
   ch.on('broadcast', {event:'sync'}, ({payload})=>syncHandleMsg(payload)).subscribe();
   syncState.ch = ch;
   syncUpdateBtn();
@@ -43192,11 +43272,11 @@ async function renderLpSheet(cls, w, pane){
   const datesEl = pane.querySelector('.lpDates');
   if(!(marksCache[cls] && marksCache[cls].loaded)){
     wrapEl.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">جارٍ تحميل الدرجات من قاعدة البيانات…</div>';
-    await fetchClassMarks(cls);
-    if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
-    await fetchExtraStudents(cls);
-    if(!(SHEET_CFG[cls] && SHEET_CFG[cls].loaded)) await fetchSheetCfg(cls);
   }
+  await fetchClassMarks(cls);
+  await fetchGroups(cls);
+  await fetchExtraStudents(cls);
+  await fetchSheetCfg(cls);
   const students = ROSTERS[cls].students;
   let dates="";
   if(w!=='avg'){
@@ -43442,7 +43522,7 @@ function initLpClassPanes(cls, w, li, lp){
       const nm=inp.value.trim();
       if(!nm){ inp.focus(); return; }
       if(ROSTERS[cls].students.includes(nm)){ inp.value=''; inp.placeholder='الاسم موجود مسبقاً!'; inp.focus(); return; }
-      if(!BASE_STUDENTS[cls]) BASE_STUDENTS[cls]=ROSTERS[cls].students.slice();
+      BASE_STUDENTS[cls] = isLegacyOwner() ? (STATIC_ROSTER[cls]||ROSTERS[cls].students).slice() : [];
       if(!ROSTERX[cls]) ROSTERX[cls]={extra:[], removed:[]};
       ROSTERX[cls].extra.push(nm);
       applyRoster(cls);
@@ -43501,7 +43581,7 @@ function initLpClassPanes(cls, w, li, lp){
     if(ifr) ifr.remove();
     ifr=document.createElement('iframe');
     ifr.dataset.w=gw;
-    ifr.src=`battleship.html?cls=${cls}&w=${gw}`;
+    ifr.src=`battleship.html?cls=${cls}&w=${gw}&u=${encodeURIComponent(CURRENT_USER||'')}`;
     ifr.setAttribute('allow','autoplay');
     ifr.style.cssText='width:100%;height:72vh;min-height:480px;border:0;border-radius:12px;background:#0b1720';
     shipsStage.appendChild(ifr);
@@ -43541,7 +43621,7 @@ function initLpClassPanes(cls, w, li, lp){
     await fetchQOverrides(cls);
     let customs=[];
     try{
-      const r=await sb.from('custom_questions').select('lesson_key,qtype,q,choices,answer').eq('class_key',cls).order('id');
+      const r=await sb.from('custom_questions').select('lesson_key,qtype,q,choices,answer').eq('class_key',ukey(cls)).order('id');
       customs=r.data||[];
     }catch(e){}
     const lessons=[], list=[];
@@ -43572,7 +43652,7 @@ function initLpClassPanes(cls, w, li, lp){
     if(ifr) ifr.remove();
     ifr=document.createElement('iframe');
     ifr.dataset.w=gw;
-    ifr.src=`snakes_ladders.html?cls=${cls}&w=${gw}`;
+    ifr.src=`snakes_ladders.html?cls=${cls}&w=${gw}&u=${encodeURIComponent(CURRENT_USER||'')}`;
     ifr.style.cssText='width:100%;height:78vh;min-height:520px;border:0;border-radius:12px;background:#1a2f1d';
     snakesStage.appendChild(ifr);
     snakesCard.style.display='none';
@@ -43615,7 +43695,7 @@ function initLpClassPanes(cls, w, li, lp){
     ifr=document.createElement('iframe');
     ifr.dataset.w=gw;
     window._milIfr=ifr;
-    ifr.src=`millionaire.html?cls=${cls}&w=${gw}`;
+    ifr.src=`millionaire.html?cls=${cls}&w=${gw}&u=${encodeURIComponent(CURRENT_USER||'')}`;
     ifr.style.cssText='width:100%;height:78vh;min-height:520px;border:0;border-radius:12px;background:#0f172a';
     milStage.appendChild(ifr);
     milCard.style.display='none';
@@ -44061,7 +44141,7 @@ async function shiftStudentRows(classKey, si){
 }
 async function deleteStudent(cls, si){
   const name = ROSTERS[cls].students[si];
-  if(!BASE_STUDENTS[cls]) BASE_STUDENTS[cls]=ROSTERS[cls].students.slice();
+  BASE_STUDENTS[cls] = isLegacyOwner() ? (STATIC_ROSTER[cls]||ROSTERS[cls].students).slice() : [];
   /* 1) الروستر: من extra يُحذف، ومن الأساسي يُسجَّل في removed */
   const rx = ROSTERX[cls] || (ROSTERX[cls]={extra:[], removed:[]});
   if(rx.extra.includes(name)) rx.extra = rx.extra.filter(n=>n!==name);
@@ -44069,9 +44149,9 @@ async function deleteStudent(cls, si){
   applyRoster(cls);
   await saveRoster(cls);
   /* 2) درجات الكشوف (class_key=cls) */
-  await shiftStudentRows(cls, si);
+  await shiftStudentRows(ukey(cls), si);
   /* 3) نقاط الطلاب (spt:<cls>) */
-  await shiftStudentRows('spt:'+cls, si);
+  await shiftStudentRows(ukey('spt:'+cls), si);
   /* 4) المجموعات: حذف العضوية وإزاحة الفهارس وتصحيح القائد */
   if(!(groupsCache[cls] && groupsCache[cls].loaded)) await fetchGroups(cls);
   let changed=false;
